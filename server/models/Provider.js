@@ -4,7 +4,7 @@ const BaseModel = require('./BaseModel');
 const TABLE = 'providers';
 const COLUMNS = [
   'id', 'user_id', 'display_name', 'profession', 'bio', 'photo_url', 'banner_url', 'city', 'category_id',
-  'price_from', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'siret', 'vat_number',
+  'price_from', 'provider_tier', 'premium_commission_percent', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'siret', 'vat_number',
   'legal_address', 'insurance_certificate', 'video_url', 'created_at', 'updated_date',
 ];
 
@@ -21,6 +21,8 @@ class Provider extends BaseModel {
     this.city = body?.city;
     this.category_id = body?.category_id;
     this.price_from = body?.price_from;
+    this.provider_tier = body?.provider_tier;
+    this.premium_commission_percent = body?.premium_commission_percent;
     this.portfolio_images = body?.portfolio_images;
     this.is_verified = body?.is_verified;
     this.rating = body?.rating;

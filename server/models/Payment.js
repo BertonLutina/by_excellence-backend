@@ -5,7 +5,8 @@ const { executeSQL } = require('../db/db');
 const TABLE = 'payments';
 const COLUMNS = [
   'id', 'request_id', 'offer_id', 'type', 'installment_index', 'installment_total',
-  'amount', 'status', 'paid_date', 'payment_method', 'invoice_url', 'created_at', 'updated_date',
+  'amount', 'commission_rate_percent', 'admin_commission_amount', 'provider_net_amount',
+  'status', 'paid_date', 'payment_method', 'invoice_url', 'created_at', 'updated_date',
 ];
 
 class Payment extends BaseModel {
@@ -18,6 +19,9 @@ class Payment extends BaseModel {
     this.installment_index = body?.installment_index;
     this.installment_total = body?.installment_total;
     this.amount = body?.amount;
+    this.commission_rate_percent = body?.commission_rate_percent;
+    this.admin_commission_amount = body?.admin_commission_amount;
+    this.provider_net_amount = body?.provider_net_amount;
     this.status = body?.status;
     this.paid_date = body?.paid_date;
     this.payment_method = body?.payment_method;
@@ -26,13 +30,23 @@ class Payment extends BaseModel {
     this.updated_date = body?.updated_date;
   }
 
-  /** Override: when client_id is in filters, join service_requests to filter by client. */
+  /** Override: join service_requests when filtering by client_id or provider_id (payments table has neither). */
   async findAll(opts = {}) {
     const { filters = {}, sort = 'created_at', order = 'DESC', limit = 100, offset = 0 } = opts;
-    const { client_id, ...restFilters } = filters;
-    if (client_id == null) return super.findAll(opts);
-    const conditions = ['r.client_id = ?'];
-    const values = [client_id];
+    const { client_id, provider_id, ...restFilters } = filters;
+    const needsJoin = client_id != null || provider_id != null;
+    if (!needsJoin) return super.findAll(opts);
+
+    const conditions = [];
+    const values = [];
+    if (client_id != null) {
+      conditions.push('r.client_id = ?');
+      values.push(client_id);
+    }
+    if (provider_id != null) {
+      conditions.push('r.provider_id = ?');
+      values.push(provider_id);
+    }
     for (const [key, val] of Object.entries(restFilters)) {
       if (val !== undefined && val !== null) {
         conditions.push(`p.\`${key}\` = ?`);

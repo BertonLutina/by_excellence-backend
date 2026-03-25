@@ -64,4 +64,8 @@ const sendToUser = (email, payload) => {
   broadcast(payload, (client) => client.user?.email === email);
 };
 
-module.exports = { init, broadcast, sendToUser };
+const sendToUserId = (userId, payload) => {
+  broadcast(payload, (client) => String(client.user?.id) === String(userId));
+};
+
+module.exports = { init, broadcast, sendToUser, sendToUserId };

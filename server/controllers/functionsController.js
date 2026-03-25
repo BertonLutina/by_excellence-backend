@@ -19,14 +19,32 @@ exports.invoke = async (req, res) => {
         return res.json({ sent: 0, message: 'Reminders sent' });
       }
       case 'createStripePayment': {
-        // Stub: return client secret and sessionUrl for Stripe; implement with stripe package
+        // Stub: return client secret + commission split for Stripe Connect (application_fee_amount, etc.)
         const { payment_id } = params;
+        if (!payment_id) return res.status(400).json({ error: 'payment_id required' });
+        const Payment = require('../models/Payment');
+        const paymentCommissionService = require('../services/paymentCommissionService');
+        const payment = await Payment.findById(payment_id);
+        if (!payment) return res.status(404).json({ error: 'Payment not found' });
+        let commissionBreakdown;
+        try {
+          commissionBreakdown = await paymentCommissionService.computeBreakdownForPayment(payment);
+        } catch (e) {
+          return res.status(400).json({ error: e.message || 'Commission calculation failed' });
+        }
         const baseUrl = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+        const amountNum = Number(payment.amount);
+        const feeCents = Math.round(commissionBreakdown.admin_commission_amount * 100);
         return res.json({
           data: {
             client_secret: `pi_placeholder_${payment_id}`,
             payment_intent_id: `pi_${payment_id}`,
             sessionUrl: `${baseUrl}/payment/placeholder?pi=${payment_id}`,
+            amount: amountNum,
+            commission: commissionBreakdown,
+            /** Stripe: pass as application_fee_amount on PaymentIntent (smallest currency unit) when using Connect */
+            stripe_application_fee_amount: feeCents,
+            stripe_transfer_amount: Math.round(commissionBreakdown.provider_net_amount * 100),
           },
         });
       }

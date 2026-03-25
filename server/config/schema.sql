@@ -109,6 +109,8 @@ CREATE TABLE providers (
     city VARCHAR(150),
     category_id BIGINT UNSIGNED,
     price_from DECIMAL(10,2),
+    provider_tier ENUM('standard','premium') NULL,
+    premium_commission_percent DECIMAL(5,2) NULL COMMENT '20 or 30 for premium tier; NULL uses default 20%',
     portfolio_images JSON,
     is_verified BOOLEAN DEFAULT FALSE,
     rating DECIMAL(3,2),
@@ -129,7 +131,8 @@ CREATE TABLE providers (
 
     INDEX idx_provider_status (status),
     INDEX idx_provider_city (city),
-    INDEX idx_provider_rating (rating)
+    INDEX idx_provider_rating (rating),
+    INDEX idx_provider_tier (provider_tier)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -224,6 +227,9 @@ CREATE TABLE payments (
     installment_index TINYINT,
     installment_total TINYINT,
     amount DECIMAL(10,2) NOT NULL,
+    commission_rate_percent DECIMAL(5,2) NULL,
+    admin_commission_amount DECIMAL(10,2) NULL,
+    provider_net_amount DECIMAL(10,2) NULL,
     status ENUM('pending','paid','failed','refunded') DEFAULT 'pending',
     paid_date DATETIME,
     payment_method VARCHAR(100),

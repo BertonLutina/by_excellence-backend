@@ -21,10 +21,19 @@ const getOne = async (req, res) => {
   }
 };
 
+/** Map legacy frontend sort key to DB column (service_requests uses created_at, not created_date). */
+function normalizeServiceRequestSort(sort) {
+  if (sort === 'created_date' || sort === '-created_date') {
+    return sort.startsWith('-') ? '-created_at' : 'created_at';
+  }
+  return sort;
+}
+
 /** Enrich getAll with client_email per row. */
 const getAll = async (req, res) => {
   try {
-    const { sort, limit, offset, ...filters } = req.query;
+    const { sort: rawSort, limit, offset, ...filters } = req.query;
+    const sort = normalizeServiceRequestSort(rawSort);
     const rows = await ServiceRequest.findAll({ filters, sort, limit, offset });
     if (rows.length === 0) return res.json([]);
     const ids = [...new Set(rows.map((r) => r.client_id).filter(Boolean))];
