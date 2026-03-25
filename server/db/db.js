@@ -2,7 +2,9 @@
 const pool = require('../config/db');
 
 /**
- * Execute SQL. Returns: SELECT -> rows (array); INSERT/UPDATE/DELETE -> result (has insertId for INSERT).
+ * Execute SQL.
+ * SELECT -> rows array
+ * INSERT/UPDATE/DELETE -> result object (insertId, affectedRows, ...)
  */
 async function executeSQL(sql, values = []) {
   const [result] = await pool.execute(sql, values);

@@ -5,8 +5,16 @@ const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
 const ctrl = require('../controllers/uploadController');
 
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const configuredUploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
+let uploadDir = configuredUploadDir;
+try {
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+} catch (err) {
+  // Fallback for environments where configured absolute path is unavailable.
+  uploadDir = path.join(__dirname, '../uploads');
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  console.warn(`[UPLOAD] Falling back to local upload dir because "${configuredUploadDir}" is not writable/creatable.`);
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),

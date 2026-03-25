@@ -65,11 +65,6 @@ exports.login = async (req, res) => {
       is_email_verified: !!user.is_email_verified
     };
 
-    console.log(safeUser);
-    console.log(client);
-    console.log(provider);
-    console.log(admin);
-
     if (client) {
       safeUser.client = client;
     }
