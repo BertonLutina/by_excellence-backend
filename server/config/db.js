@@ -4,24 +4,13 @@ const isProd = process.env.NODE_ENV === 'production';
 const quietLogs = isProd && (process.env.LOG_LEVEL || 'error') === 'error';
 
 const dbConfig = {
+  socketPath :'/srv/run/mysqld/mysqld.sock',
   user: 'root',
   password:'',
-  database: 'by_excellence',
-  charset: 'utf8mb4_unicode_ci',
+  database:'by_excellence',
   waitForConnections: true,
-  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
-  queueLimit: 0,
   timezone: 'Z',
 };
-
-if (process.env.DB_SOCKET_PATH) {
-  dbConfig.socketPath = process.env.DB_SOCKET_PATH;
-} else if (process.env.DB_HOST) {
-  dbConfig.host = process.env.DB_HOST;
-  dbConfig.port = Number(process.env.DB_PORT || 3306);
-} else {
-  dbConfig.socketPath = '/srv/run/mysqld/mysqld.sock';
-}
 
 const pool = mysql.createPool(dbConfig);
 
