@@ -6,6 +6,7 @@ const { verificationEmail, resetPasswordEmail } = require('../utils/emailTemplat
 const Client = require('../models/Client');
 const Provider = require('../models/Provider');
 const Admin = require('../models/Admin');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/constant');
 
 const ID_TO_ROLE = { 1: 'client', 2: 'provider', 3: 'admin' };
 const roleString = (user) => (user && user.role != null ? ID_TO_ROLE[user.role] ?? String(user.role) : undefined);
@@ -13,8 +14,8 @@ const roleString = (user) => (user && user.role != null ? ID_TO_ROLE[user.role] 
 const signToken = (user) =>
   jwt.sign(
     { id: user.id, email: user.email, role: roleString(user), full_name: user.full_name },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
   );
 
 exports.register = async (req, res) => {
