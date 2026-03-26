@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../config/constant');
 
 const authenticate = (req, res, next) => {
   const header = req.headers.authorization;
@@ -7,7 +8,7 @@ const authenticate = (req, res, next) => {
   }
   const token = header.slice(7);
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch {
@@ -24,7 +25,7 @@ const optionalAuth = (req, res, next) => {
   }
   const token = header.slice(7);
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = jwt.verify(token, JWT_SECRET);
   } catch {
     req.user = null;
   }
