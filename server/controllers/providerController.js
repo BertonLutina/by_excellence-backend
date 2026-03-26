@@ -1,5 +1,4 @@
 const Provider = require('../models/Provider');
-const { broadcast } = require('../websocket/wsServer');
 const {
   computeProviderTier,
   isValidProviderTier,
@@ -74,7 +73,6 @@ module.exports = {
       if (!normalized.ok) return res.status(normalized.status || 400).json({ error: normalized.message });
 
       const row = await Provider.create(normalized.data);
-      broadcast({ event: 'Provider:created', data: row });
       return res.status(201).json(row);
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -88,7 +86,6 @@ module.exports = {
 
       const row = await Provider.update(req.params.id, normalized.data);
       if (!row) return res.status(404).json({ error: 'Not found' });
-      broadcast({ event: 'Provider:updated', data: row });
       return res.json(row);
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -98,7 +95,6 @@ module.exports = {
   remove: async (req, res) => {
     try {
       await Provider.delete(req.params.id);
-      broadcast({ event: 'Provider:deleted', data: { id: req.params.id } });
       return res.json({ success: true, id: req.params.id });
     } catch (err) {
       return res.status(500).json({ error: err.message });

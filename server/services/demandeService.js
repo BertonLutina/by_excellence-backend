@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const wsServer = require('../websocket/wsServer');
+const sseBus = require('../realtime/sseBus');
 
 const DEMANDE_TYPES = new Set(['single', 'combo']);
 const DEMANDE_STATUSES = new Set(['pending', 'sent', 'accepted', 'rejected', 'completed']);
@@ -101,7 +101,7 @@ async function saveNotifications(conn, userIds, type, title, body, payload) {
   const sql = 'INSERT INTO notifications (user_id, type, title, body, payload) VALUES (?, ?, ?, ?, ?)';
   for (const userId of ids) {
     await conn.execute(sql, [userId, type, title, body, JSON.stringify(payload || {})]);
-    wsServer.sendToUserId(userId, { event: type, title, body, payload });
+    sseBus.publishToUser(userId, type, { type, title, body, payload: payload || {} });
   }
 }
 
@@ -177,7 +177,6 @@ async function adminPatchDemande(demandeId, input, db = pool) {
       [title, content, nextStatus, forwardedAt, demandeId]
     );
     const updated = await getDemandeById(conn, demandeId);
-    wsServer.broadcast({ event: 'demande.status_updated', payload: { demande_id: demandeId, status: updated.status } });
     return updated;
   }, db);
 }
@@ -236,7 +235,6 @@ async function adminForwardDemande(demandeId, db = pool) {
       `Demande #${demandeId} has been forwarded`,
       { demande_id: demandeId }
     );
-    wsServer.broadcast({ event: 'demande.forwarded', payload: { demande_id: demandeId } });
     return getDemandeById(conn, demandeId);
   }, db);
 }
@@ -259,7 +257,6 @@ async function adminUpdateStatus(demandeId, status, db = pool) {
     if (!demande) throw fail(404, 'Demande not found');
     if (!isTransitionAllowed(demande.status, status)) throw fail(409, 'Invalid status transition');
     await conn.execute('UPDATE demandes SET status = ? WHERE id = ?', [status, demandeId]);
-    wsServer.broadcast({ event: 'demande.status_updated', payload: { demande_id: demandeId, status } });
     return getDemandeById(conn, demandeId);
   }, db);
 }
@@ -334,10 +331,6 @@ async function providerRespond(demandeId, input, authUser, db = pool) {
       `A provider has ${input.response} demande #${demandeId}`,
       { demande_id: demandeId, response: input.response }
     );
-    wsServer.broadcast({
-      event: 'demande.provider_response',
-      payload: { demande_id: demandeId, provider_id: provider.id, response: input.response, status: nextStatus },
-    });
     return { demande, provider_id: provider.id, response: input.response };
   }, db);
 }

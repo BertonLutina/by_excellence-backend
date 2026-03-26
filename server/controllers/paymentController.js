@@ -1,6 +1,5 @@
 const createEntityController = require('./createEntityController');
 const Payment = require('../models/Payment');
-const { broadcast } = require('../websocket/wsServer');
 const paymentCommissionService = require('../services/paymentCommissionService');
 
 const base = createEntityController(Payment, 'Payment');
@@ -21,7 +20,6 @@ const update = async (req, res) => {
 
     const row = await Payment.update(req.params.id, body);
     if (!row) return res.status(404).json({ error: 'Not found' });
-    broadcast({ event: 'Payment:updated', data: row });
     return res.json(row);
   } catch (err) {
     return res.status(500).json({ error: err.message });

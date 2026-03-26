@@ -1,5 +1,3 @@
-const { broadcast } = require('../websocket/wsServer');
-
 /**
  * Enrich create payload with FKs from req.user when applicable (schema uses user/client id, not email).
  */
@@ -55,7 +53,6 @@ const createEntityController = (model, entityName) => ({
     try {
       const data = enrichCreateData(entityName, req, req.body);
       const row = await model.create(data);
-      broadcast({ event: `${entityName}:created`, data: row });
       res.status(201).json(row);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -66,7 +63,6 @@ const createEntityController = (model, entityName) => ({
     try {
       const row = await model.update(req.params.id, req.body);
       if (!row) return res.status(404).json({ error: 'Not found' });
-      broadcast({ event: `${entityName}:updated`, data: row });
       res.json(row);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -76,7 +72,6 @@ const createEntityController = (model, entityName) => ({
   remove: async (req, res) => {
     try {
       await model.delete(req.params.id);
-      broadcast({ event: `${entityName}:deleted`, data: { id: req.params.id } });
       res.json({ success: true, id: req.params.id });
     } catch (err) {
       res.status(500).json({ error: err.message });
