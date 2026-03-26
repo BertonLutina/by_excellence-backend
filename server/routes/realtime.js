@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const sseBus = require('../realtime/sseBus');
+const { JWT_SECRET } = require('../config/constant');
 
 function resolveUser(req) {
   const header = req.headers.authorization;
@@ -9,7 +10,7 @@ function resolveUser(req) {
   const token = headerToken || queryToken;
   if (!token) return null;
   try {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    return jwt.verify(token, JWT_SECRET);
   } catch {
     return null;
   }

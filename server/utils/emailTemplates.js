@@ -1,4 +1,4 @@
-const APP_URL = process.env.APP_URL || 'https://byexcellence-as.com';
+const { APP_URL } = require('../config/constant');
 const BRAND_COLOR = '#0a0a5c';
 const ACCENT = '#d4a848';
 
