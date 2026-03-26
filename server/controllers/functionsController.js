@@ -2,6 +2,8 @@
  * Stub implementations for frontend base44.functions.invoke(name, params).
  * Replace with real logic (Stripe, PDF, email) as needed.
  */
+const { FRONTEND_ORIGIN } = require('../config/constant');
+
 exports.invoke = async (req, res) => {
   try {
     const { name, params = {} } = req.body;
@@ -32,7 +34,7 @@ exports.invoke = async (req, res) => {
         } catch (e) {
           return res.status(400).json({ error: e.message || 'Commission calculation failed' });
         }
-        const baseUrl = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+        const baseUrl = FRONTEND_ORIGIN;
         const amountNum = Number(payment.amount);
         const feeCents = Math.round(commissionBreakdown.admin_commission_amount * 100);
         return res.json({

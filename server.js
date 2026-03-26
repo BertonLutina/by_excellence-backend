@@ -1,19 +1,29 @@
-require('dotenv').config();
-const fs = require('fs');
 const path = require('path');
+const {
+  JWT_SECRET,
+  IS_PROD,
+  QUIET_LOGS,
+  FRONTEND_ORIGIN,
+  UPLOAD_DIR,
+  PORT,
+} = require('./server/config/constant');
 
 const startupLogPath = '/tmp/byex-backend-startup.log';
 const trace = (msg) => {
   try {
-    fs.appendFileSync(startupLogPath, `[${new Date().toISOString()}] ${msg}\n`);
+    require('fs').appendFileSync(startupLogPath, `[${new Date().toISOString()}] ${msg}\n`);
   } catch {}
 };
+trace('constants loaded');
 
 process.stdout.on('error', (err) => {
   if (err.code !== 'EPIPE') throw err;
 });
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim() === '') {
+
+
+if (!JWT_SECRET || JWT_SECRET.trim() === '') {
+  trace('JWT_SECRET missing from constants');
   console.error('[API] JWT_SECRET is required. Set it in your .env (e.g. JWT_SECRET=your_super_secret_jwt_key_here)');
   process.exit(1);
 }
@@ -23,34 +33,46 @@ const cors = require('cors');
 trace('server.js loaded');
 
 const app = express();
-const isProd = process.env.NODE_ENV === 'production';
-const quietLogs = isProd && (process.env.LOG_LEVEL || 'error') === 'error';
+const isProd = IS_PROD;
+const quietLogs = QUIET_LOGS;
 
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173', credentials: true }));
+app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
 app.use(express.json());
 trace('middleware ready');
 
-app.use('/api/auth', require('./server/routes/auth'));
-app.use('/api/users', require('./server/routes/users'));
-app.use('/api/service-categories', require('./server/routes/serviceCategories'));
-app.use('/api/providers', require('./server/routes/providers'));
-app.use('/api/service-requests', require('./server/routes/serviceRequests'));
-app.use('/api/offers', require('./server/routes/offers'));
-app.use('/api/payments', require('./server/routes/payments'));
-app.use('/api/reviews', require('./server/routes/reviews'));
-app.use('/api/messages', require('./server/routes/messages'));
-app.use('/api/service-items', require('./server/routes/serviceItems'));
-app.use('/api/provider-availabilities', require('./server/routes/providerAvailabilities'));
-app.use('/api/favorites', require('./server/routes/favorites'));
-app.use('/api/functions', require('./server/routes/functions'));
-app.use('/api/upload', require('./server/routes/upload'));
-app.use('/api/demandes', require('./server/routes/demandes'));
-app.use('/api/admin/demandes', require('./server/routes/adminDemandes'));
-app.use('/api/provider/demandes', require('./server/routes/providerDemandes'));
-app.use('/api/realtime', require('./server/routes/realtime'));
+const mountSafe = (mountPath, routeFile) => {
+  try {
+    trace(`mounting ${mountPath} from ${routeFile}`);
+    const mod = require(routeFile);
+    app.use(mountPath, mod);
+    trace(`mounted ${mountPath}`);
+  } catch (err) {
+    trace(`mount FAILED ${mountPath}: ${err && err.stack ? err.stack : String(err)}`);
+    throw err;
+  }
+};
+
+mountSafe('/api/auth', './server/routes/auth');
+mountSafe('/api/users', './server/routes/users');
+mountSafe('/api/service-categories', './server/routes/serviceCategories');
+mountSafe('/api/providers', './server/routes/providers');
+mountSafe('/api/service-requests', './server/routes/serviceRequests');
+mountSafe('/api/offers', './server/routes/offers');
+mountSafe('/api/payments', './server/routes/payments');
+mountSafe('/api/reviews', './server/routes/reviews');
+mountSafe('/api/messages', './server/routes/messages');
+mountSafe('/api/service-items', './server/routes/serviceItems');
+mountSafe('/api/provider-availabilities', './server/routes/providerAvailabilities');
+mountSafe('/api/favorites', './server/routes/favorites');
+mountSafe('/api/functions', './server/routes/functions');
+mountSafe('/api/upload', './server/routes/upload');
+mountSafe('/api/demandes', './server/routes/demandes');
+mountSafe('/api/admin/demandes', './server/routes/adminDemandes');
+mountSafe('/api/provider/demandes', './server/routes/providerDemandes');
+mountSafe('/api/realtime', './server/routes/realtime');
 trace('routes mounted');
 
-const uploadsDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+const uploadsDir = UPLOAD_DIR || path.join(__dirname, 'uploads');
 app.use('/uploads', require('express').static(uploadsDir));
 trace(`uploads dir: ${uploadsDir}`);
 
@@ -75,7 +97,6 @@ process.on('uncaughtException', (err) => {
   trace(`uncaughtException: ${err && err.stack ? err.stack : String(err)}`);
 });
 
-const PORT = Number(process.env.PORT || 4000);
 app.listen(PORT, '0.0.0.0', () => {
   trace(`listening on ${PORT}`);
   if (!quietLogs) console.log(`[API] By Excellence backend running on port ${PORT}`);

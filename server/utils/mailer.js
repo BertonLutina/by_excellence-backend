@@ -1,16 +1,24 @@
 const nodemailer = require('nodemailer');
+const {
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_SECURE,
+  SMTP_FROM,
+} = require('../config/constant');
 
 const hasSmtpCredentials = () =>
-  Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  Boolean(SMTP_USER && SMTP_PASS);
 
 const transporter = hasSmtpCredentials()
   ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: SMTP_USER,
+        pass: SMTP_PASS,
       },
     })
   : null;
@@ -20,7 +28,7 @@ const sendMail = async ({ to, subject, html }) => {
     console.warn('[Mail] SMTP_USER/SMTP_PASS not set — skipping send. Set them in .env to enable email.');
     return;
   }
-  const from = process.env.SMTP_FROM || `"By Excellence" <${process.env.SMTP_USER}>`;
+  const from = SMTP_FROM || `"By Excellence" <${SMTP_USER}>`;
   await transporter.sendMail({ from, to, subject, html });
 };
 

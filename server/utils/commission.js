@@ -3,17 +3,21 @@
  * - Standard tier (and unclassified / non-premium): COMMISSION_STANDARD_PERCENT (default 15%).
  * - Premium tier: COMMISSION_PREMIUM_DEFAULT_PERCENT (default 20%) or provider.premium_commission_percent (20 or 30).
  */
+const {
+  COMMISSION_STANDARD_PERCENT,
+  COMMISSION_PREMIUM_DEFAULT_PERCENT,
+} = require('../config/constant');
 
 const STANDARD_DEFAULT = 15;
 const PREMIUM_DEFAULT = 20;
 
 function standardPercent() {
-  const n = Number(process.env.COMMISSION_STANDARD_PERCENT);
+  const n = Number(COMMISSION_STANDARD_PERCENT);
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : STANDARD_DEFAULT;
 }
 
 function premiumDefaultPercent() {
-  const n = Number(process.env.COMMISSION_PREMIUM_DEFAULT_PERCENT);
+  const n = Number(COMMISSION_PREMIUM_DEFAULT_PERCENT);
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : PREMIUM_DEFAULT;
 }
 
