@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../config/constant');
+const JWT_SECRET = process.env.JWT_SECRET || '';
 
 const authenticate = (req, res, next) => {
   const header = req.headers.authorization;
@@ -7,6 +7,7 @@ const authenticate = (req, res, next) => {
     return res.status(401).json({ error: 'No token provided' });
   }
   const token = header.slice(7);
+  if (!JWT_SECRET) return res.status(500).json({ error: 'Server JWT is not configured' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
@@ -24,6 +25,10 @@ const optionalAuth = (req, res, next) => {
     return next();
   }
   const token = header.slice(7);
+  if (!JWT_SECRET) {
+    req.user = null;
+    return next();
+  }
   try {
     req.user = jwt.verify(token, JWT_SECRET);
   } catch {
