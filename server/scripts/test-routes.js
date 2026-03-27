@@ -2,7 +2,7 @@
  * Test that API routes respond. Run with: node scripts/test-routes.js
  * Requires: backend server running (npm run dev). Full pass requires DB + schema (see config/schema.sql).
  */
-const { API_BASE_URL } = require('../config/constant');
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:4000';
 const BASE = `${API_BASE_URL}/api`;
 
 const log = (name, ok, detail = '') => {

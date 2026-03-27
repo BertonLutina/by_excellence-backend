@@ -1,6 +1,6 @@
-const { APP_URL } = require('../config/constant');
 const BRAND_COLOR = '#0a0a5c';
 const ACCENT = '#d4a848';
+const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
 const base = (content) => `
 <!DOCTYPE html>
