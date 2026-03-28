@@ -2,7 +2,7 @@
  * Stub implementations for frontend base44.functions.invoke(name, params).
  * Replace with real logic (Stripe, PDF, email) as needed.
  */
-const { FRONTEND_ORIGIN } = require('../config/constant');
+const { FRONTEND_ORIGIN } = require('../../constants/constant');
 
 exports.invoke = async (req, res) => {
   try {

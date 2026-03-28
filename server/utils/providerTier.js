@@ -8,7 +8,7 @@ function normalizePriceFrom(priceFrom) {
 
 function computeProviderTier(priceFrom) {
   const numericPrice = normalizePriceFrom(priceFrom);
-  if (numericPrice === null || numericPrice === 1000) return null;
+  if (numericPrice === null) return null;
   return numericPrice > 1000 ? 'premium' : 'standard';
 }
 

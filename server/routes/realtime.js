@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const sseBus = require('../realtime/sseBus');
-const { JWT_SECRET } = require('../config/constant');
+const { JWT_SECRET } = require('../../constants/constant');
 
 function resolveUser(req) {
   const header = req.headers.authorization;
