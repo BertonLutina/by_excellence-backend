@@ -6,7 +6,7 @@
 const {
   COMMISSION_STANDARD_PERCENT,
   COMMISSION_PREMIUM_DEFAULT_PERCENT,
-} = require('../config/constant');
+} = require('../../constants/constant');
 
 const STANDARD_DEFAULT = 15;
 const PREMIUM_DEFAULT = 20;

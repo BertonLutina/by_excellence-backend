@@ -1,12 +1,34 @@
+
 const path = require('path');
 const {
   JWT_SECRET,
   IS_PROD,
   QUIET_LOGS,
   FRONTEND_ORIGIN,
-  UPLOAD_DIR,
+  CORS_ORIGINS,
+  IS_GANDI_HOSTING,
   PORT,
-} = require('./server/config/constant');
+} = require('./constants/constant');
+
+const parseCorsOrigins = (str) =>
+  (str || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const LOCAL_DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+const corsOrigin = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  const allowlist = new Set(
+    [FRONTEND_ORIGIN, ...parseCorsOrigins(CORS_ORIGINS)].filter(Boolean)
+  );
+  if (!IS_GANDI_HOSTING && LOCAL_DEV_ORIGIN.test(origin)) {
+    return callback(null, true);
+  }
+  if (allowlist.has(origin)) return callback(null, true);
+  callback(null, false);
+};
 
 const startupLogPath = '/tmp/byex-backend-startup.log';
 const trace = (msg) => {
@@ -33,10 +55,11 @@ const cors = require('cors');
 trace('server.js loaded');
 
 const app = express();
+app.set('trust proxy', 1);
 const isProd = IS_PROD;
 const quietLogs = QUIET_LOGS;
 
-app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 trace('middleware ready');
 
@@ -72,9 +95,9 @@ mountSafe('/api/provider/demandes', './server/routes/providerDemandes');
 mountSafe('/api/realtime', './server/routes/realtime');
 trace('routes mounted');
 
-const uploadsDir = UPLOAD_DIR || path.join(__dirname, 'uploads');
+const uploadsDir = path.join(__dirname, 'public/uploads');
 app.use('/uploads', require('express').static(uploadsDir));
-trace(`uploads dir: ${uploadsDir}`);
+trace(`uploads static: ${uploadsDir}`);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

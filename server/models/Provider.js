@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 const BaseModel = require('./BaseModel');
+const { coercePortfolioImages, bindJsonDocument } = require('../utils/portfolioImages');
 
 const TABLE = 'providers';
 const COLUMNS = [
@@ -23,7 +24,11 @@ class Provider extends BaseModel {
     this.price_from = body?.price_from;
     this.provider_tier = body?.provider_tier;
     this.premium_commission_percent = body?.premium_commission_percent;
-    this.portfolio_images = body?.portfolio_images;
+    if (body && Object.prototype.hasOwnProperty.call(body, 'portfolio_images')) {
+      this.portfolio_images = bindJsonDocument(coercePortfolioImages(body.portfolio_images));
+    } else {
+      this.portfolio_images = body?.portfolio_images;
+    }
     this.is_verified = body?.is_verified;
     this.rating = body?.rating;
     this.review_count = body?.review_count;

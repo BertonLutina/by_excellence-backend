@@ -1,0 +1,30 @@
+---
+description: Toujours aligner le frontend Vite/React (repo pair) avec les changements API du backend
+alwaysApply: true
+---
+
+# Frontend pair — By Excellence
+
+Le dépôt frontend associé à ce backend est :
+
+**`/Users/chailalutina/Documents/by-excellence`**
+
+## Quand appliquer cette règle
+
+Dès qu’une tâche modifie :
+
+- Des routes ou handlers sous `server/routes/`, `server/controllers/`
+- Le format JSON des réponses, codes d’erreur, query params acceptés
+- Des modèles / champs exposés à l’API
+- L’auth, l’upload, ou tout contrat consommé par le client
+
+## Ce que l’agent doit faire
+
+1. **Mettre à jour** `src/api/apiClient.js` (et les pages/composants concernés) pour refléter le nouveau contrat.
+2. Vérifier **HashRouter** / URLs (`/#/...`) et `VITE_API_URL` si pertinent.
+3. Ajouter ou ajuster les clés **i18n** dans `src/components/i18n/translations.jsx` si de nouveaux libellés côté UI.
+4. Ne pas considérer la tâche **terminée** si l’API backend change sans mise à jour du client qui l’appelle.
+
+## Workspace
+
+Si seul le dossier `by-excellence-backend` est ouvert, utiliser **le chemin absolu** ci-dessus pour lire et éditer le frontend.

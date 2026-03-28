@@ -5,9 +5,9 @@ const {
   isValidProviderTier,
 } = require('../utils/providerTier');
 
-test('tier mapping for <1000, =1000, >1000', () => {
+test('tier mapping for <=1000 vs >1000', () => {
   assert.equal(computeProviderTier(999.99), 'standard');
-  assert.equal(computeProviderTier(1000), null);
+  assert.equal(computeProviderTier(1000), 'standard');
   assert.equal(computeProviderTier(1000.01), 'premium');
 });
 

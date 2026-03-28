@@ -1,4 +1,6 @@
 const Provider = require('../models/Provider');
+const { PortfolioImagesParseError } = require('../utils/portfolioImages');
+const { serializeProviderRow, serializeProviderRows } = require('../utils/serializeProvider');
 const {
   computeProviderTier,
   isValidProviderTier,
@@ -50,8 +52,10 @@ module.exports = {
       if (!tierFilter.ok) return res.status(400).json({ error: tierFilter.message });
       if (tierFilter.value !== undefined) filters.provider_tier = tierFilter.value;
 
-      const rows = await Provider.findAll({ filters, sort, limit, offset });
-      return res.json(rows);
+      const rawLimit = Number(limit) || 100;
+      const safeLimit = Math.min(Math.max(rawLimit, 1), 500);
+      const rows = await Provider.findAll({ filters, sort, limit: safeLimit, offset });
+      return res.json(serializeProviderRows(rows));
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -61,7 +65,7 @@ module.exports = {
     try {
       const row = await Provider.findById(req.params.id);
       if (!row) return res.status(404).json({ error: 'Not found' });
-      return res.json(row);
+      return res.json(serializeProviderRow(row));
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -73,7 +77,7 @@ module.exports = {
       if (!normalized.ok) return res.status(normalized.status || 400).json({ error: normalized.message });
 
       const row = await Provider.create(normalized.data);
-      return res.status(201).json(row);
+      return res.status(201).json(serializeProviderRow(row));
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -86,8 +90,11 @@ module.exports = {
 
       const row = await Provider.update(req.params.id, normalized.data);
       if (!row) return res.status(404).json({ error: 'Not found' });
-      return res.json(row);
+      return res.json(serializeProviderRow(row));
     } catch (err) {
+      if (err instanceof PortfolioImagesParseError) {
+        return res.status(400).json({ error: err.message });
+      }
       return res.status(500).json({ error: err.message });
     }
   },

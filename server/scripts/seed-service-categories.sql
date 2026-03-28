@@ -1,5 +1,8 @@
--- Service categories from CSV export. Run: mysql -u root -p by_excellence < scripts/seed-service-categories.sql
+-- Service categories from CSV export. Run: mysql -u root -p by_excellence < server/scripts/seed-service-categories.sql
 -- Table: service_categories (id AUTO_INCREMENT, name, description, icon, image_url, created_at)
+--
+-- One seeded provider per category (users + profiles, standard tier if price_from <= 1000 else premium):
+--   node server/scripts/seedProvidersByCategory.js
 
 INSERT INTO service_categories (name, description, icon, image_url, created_at) VALUES
 ('Bien-être et thérapie', 'Psychologie et accompagnement personnel', 'Heart', '', '2026-02-06 15:08:17'),

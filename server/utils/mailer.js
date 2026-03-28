@@ -6,7 +6,7 @@ const {
   SMTP_PORT,
   SMTP_SECURE,
   SMTP_FROM,
-} = require('../config/constant');
+} = require('../../constants/constant');
 
 const hasSmtpCredentials = () =>
   Boolean(SMTP_USER && SMTP_PASS);
