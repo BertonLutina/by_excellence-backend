@@ -6,7 +6,6 @@ const {
   QUIET_LOGS,
   FRONTEND_ORIGIN,
   CORS_ORIGINS,
-  IS_GANDI_HOSTING,
   PORT,
 } = require('./constants/constant');
 
@@ -16,16 +15,18 @@ const parseCorsOrigins = (str) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-const LOCAL_DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+/** Browser Origin for local Vite (5173) / local Node — allow even on Gandi so dev can hit prod API. */
+const LOCAL_DEV_ORIGIN =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
 const corsOrigin = (origin, callback) => {
   if (!origin) return callback(null, true);
+  if (LOCAL_DEV_ORIGIN.test(origin)) {
+    return callback(null, true);
+  }
   const allowlist = new Set(
     [FRONTEND_ORIGIN, ...parseCorsOrigins(CORS_ORIGINS)].filter(Boolean)
   );
-  if (!IS_GANDI_HOSTING && LOCAL_DEV_ORIGIN.test(origin)) {
-    return callback(null, true);
-  }
   if (allowlist.has(origin)) return callback(null, true);
   callback(null, false);
 };
