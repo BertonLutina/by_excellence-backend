@@ -77,6 +77,22 @@ class BaseModel {
     return Array.isArray(result) ? result : [];
   }
 
+  async countAll({ filters = {} } = {}) {
+    const conditions = [];
+    const values = [];
+    for (const [key, val] of Object.entries(filters)) {
+      if (val !== undefined && val !== null) {
+        conditions.push(`\`${key}\` = ?`);
+        values.push(val);
+      }
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `SELECT COUNT(*) AS cnt FROM \`${this.table}\` ${where}`;
+    const result = await executeSQL(sql, values);
+    const row = Array.isArray(result) ? result[0] : result;
+    return Number(row?.cnt) || 0;
+  }
+
   async create() {
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     if (!this.autoIncrement) this.id = this.id || uuidv4();

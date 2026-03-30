@@ -5,7 +5,7 @@ const { coercePortfolioImages, bindJsonDocument } = require('../utils/portfolioI
 const TABLE = 'providers';
 const COLUMNS = [
   'id', 'user_id', 'display_name', 'profession', 'bio', 'photo_url', 'banner_url', 'city', 'category_id',
-  'price_from', 'provider_tier', 'premium_commission_percent', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'siret', 'vat_number',
+  'price_from', 'provider_tier', 'premium_commission_percent', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'structure_type', 'worker_count', 'siret', 'vat_number',
   'legal_address', 'insurance_certificate', 'video_url', 'created_at', 'updated_date',
 ];
 
@@ -34,6 +34,8 @@ class Provider extends BaseModel {
     this.review_count = body?.review_count;
     this.status = body?.status;
     this.company_name = body?.company_name;
+    this.structure_type = body?.structure_type;
+    this.worker_count = body?.worker_count;
     this.siret = body?.siret;
     this.vat_number = body?.vat_number;
     this.legal_address = body?.legal_address;
@@ -45,6 +47,7 @@ class Provider extends BaseModel {
 }
 
 Provider.findAll = (opts) => new Provider({}).findAll(opts);
+Provider.countAll = (opts) => new Provider({}).countAll(opts);
 Provider.findById = (id) => new Provider({}).findById(id);
 Provider.findByUserId = (userId) => new Provider({}).findByUserId(userId);
 Provider.create = (data) => new Provider(data).create();

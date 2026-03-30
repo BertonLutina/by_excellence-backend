@@ -23,13 +23,17 @@ const transporter = hasSmtpCredentials()
     })
   : null;
 
-const sendMail = async ({ to, subject, html }) => {
+const isMailConfigured = () => Boolean(transporter);
+
+const sendMail = async ({ to, subject, html, replyTo }) => {
   if (!transporter) {
     console.warn('[Mail] SMTP_USER/SMTP_PASS not set — skipping send. Set them in .env to enable email.');
     return;
   }
   const from = SMTP_FROM || `"By Excellence" <${SMTP_USER}>`;
-  await transporter.sendMail({ from, to, subject, html });
+  const opts = { from, to, subject, html };
+  if (replyTo) opts.replyTo = replyTo;
+  await transporter.sendMail(opts);
 };
 
-module.exports = { sendMail };
+module.exports = { sendMail, isMailConfigured };

@@ -5,6 +5,14 @@ alwaysApply: true
 
 # Frontend pair — By Excellence
 
+## Règle simple (miroir du frontend)
+
+**Si une évolution touche l’API ou la base de données** (nouveaux champs en réponse, nouvelles routes, changement de validation ou de schéma), l’agent doit **aussi** mettre à jour le **frontend** qui consomme ces données (`apiClient`, pages, formulaires, types d’affichage, i18n). La tâche n’est pas terminée tant que le client n’est pas aligné.
+
+**À l’inverse**, un travail **uniquement layout / UI** sur le frontend (sans nouveau contrat API ni nouvelle persistance) **ne impose aucun changement** sur ce backend.
+
+---
+
 Le dépôt frontend associé à ce backend est :
 
 **`/Users/chailalutina/Documents/by-excellence`**

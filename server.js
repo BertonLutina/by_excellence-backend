@@ -60,6 +60,10 @@ const isProd = IS_PROD;
 const quietLogs = QUIET_LOGS;
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
+
+const stripeWebhookRoutes = require('./server/routes/stripeWebhook');
+app.use('/api/stripe', stripeWebhookRoutes);
+
 app.use(express.json());
 trace('middleware ready');
 
@@ -80,6 +84,8 @@ mountSafe('/api/users', './server/routes/users');
 mountSafe('/api/service-categories', './server/routes/serviceCategories');
 mountSafe('/api/providers', './server/routes/providers');
 mountSafe('/api/service-requests', './server/routes/serviceRequests');
+const offerRespondRoutes = require('./server/routes/offerRespond');
+app.use('/api/offers', offerRespondRoutes);
 mountSafe('/api/offers', './server/routes/offers');
 mountSafe('/api/payments', './server/routes/payments');
 mountSafe('/api/reviews', './server/routes/reviews');
@@ -93,11 +99,14 @@ mountSafe('/api/demandes', './server/routes/demandes');
 mountSafe('/api/admin/demandes', './server/routes/adminDemandes');
 mountSafe('/api/provider/demandes', './server/routes/providerDemandes');
 mountSafe('/api/realtime', './server/routes/realtime');
+mountSafe('/api/public', './server/routes/public');
 trace('routes mounted');
 
-const uploadsDir = path.join(__dirname, 'public/uploads');
+const publicDir = path.join(__dirname, 'public');
+const uploadsDir = path.join(publicDir, 'uploads');
+app.use('/public', require('express').static(publicDir));
 app.use('/uploads', require('express').static(uploadsDir));
-trace(`uploads static: ${uploadsDir}`);
+trace(`public static: ${publicDir} (URLs /public/...); uploads alias: ${uploadsDir}`);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
