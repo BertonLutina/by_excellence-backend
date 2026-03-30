@@ -117,6 +117,8 @@ CREATE TABLE providers (
     review_count INT DEFAULT 0,
     status ENUM('active','inactive','pending') DEFAULT 'pending',
     company_name VARCHAR(255),
+    structure_type ENUM('solo','team') NOT NULL DEFAULT 'solo',
+    worker_count INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Intervenants (1 = seul, 2+ = équipe)',
     siret VARCHAR(14),
     vat_number VARCHAR(50),
     legal_address TEXT,

@@ -11,6 +11,7 @@ function serializeProviderRow(row) {
     o.premium_commission_percent = Number(o.premium_commission_percent);
   }
   if (o.category_id != null && o.category_id !== '') o.category_id = Number(o.category_id);
+  if (o.worker_count != null && o.worker_count !== '') o.worker_count = Number(o.worker_count);
   return o;
 }
 

@@ -2,9 +2,19 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
+const cwd = process.cwd();
+const inferredGandiHosting =
+  cwd.startsWith('/srv/data/web/vhosts') ||
+  cwd.startsWith('/lamp0/web');
+const runtimeNodeEnv = process.env.NODE_ENV || (inferredGandiHosting ? 'production' : 'development');
+
 const candidateEnvPaths = [
   path.join(process.cwd(), '.env'),
+  path.join(process.cwd(), '.env.local'),
+  path.join(process.cwd(), `.env.${runtimeNodeEnv}`),
+  path.join(process.cwd(), `.env.${runtimeNodeEnv}.local`),
   path.join(process.cwd(), 'server', '.env'),
+  path.join(process.cwd(), 'server', `.env.${runtimeNodeEnv}`),
   '/srv/data/web/vhosts/default/.env',
   '/lamp0/web/hosts/default/.env',
 ];
@@ -19,11 +29,9 @@ for (const p of candidateEnvPaths) {
   }
 }
 
-const cwd = process.cwd();
 const IS_GANDI_HOSTING =
   Boolean(process.env.GANDI) ||
-  cwd.startsWith('/srv/data/web/vhosts') ||
-  cwd.startsWith('/lamp0/web');
+  inferredGandiHosting;
 
 const num = (v, fallback) => {
   const n = Number(v);
@@ -47,19 +55,14 @@ const LOG_LEVEL = process.env.LOG_LEVEL || (IS_PROD ? 'error' : 'debug');
 
 const gandiHttpsBase = process.env.GANDI ? `https://${process.env.GANDI}` : '';
 
-/** Development: API on localhost:4000. Production: from env or Gandi hostname. */
-const defaultAppUrl = IS_DEV
-  ? 'http://localhost:4000'
-  : IS_GANDI_HOSTING && gandiHttpsBase
-    ? gandiHttpsBase
-    : 'https://byexcellence-as.com';
+/** Development: API on localhost:8080. Production: from env or Gandi hostname. */
+const defaultAppUrl = 'https://byexcellence-as.com';
 
 const APP_URL = process.env.APP_URL || defaultAppUrl;
 const API_BASE_URL = process.env.API_BASE_URL || APP_URL;
 
 /** Development: Vite default. Production: same as public app unless overridden. */
-const defaultFrontendOrigin = IS_DEV ? 'http://localhost:5173' : APP_URL;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || defaultFrontendOrigin;
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN ;
 
 let DB_SOCKET_PATH = process.env.DB_SOCKET_PATH || '';
 const DB_HOST = process.env.DB_HOST || '';
@@ -80,7 +83,7 @@ module.exports = {
   LOG_LEVEL,
   QUIET_LOGS: IS_PROD && LOG_LEVEL === 'error',
 
-  PORT: num(process.env.PORT, IS_DEV ? 4000 : 8080),
+  PORT: num(process.env.PORT, IS_DEV ? 8080 : 8080),
 
   APP_URL,
   API_BASE_URL,
@@ -106,6 +109,8 @@ module.exports = {
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
   SMTP_FROM: process.env.SMTP_FROM || '',
+  /** Inbox for contact form (defaults to SMTP_USER if unset) */
+  CONTACT_INBOX_EMAIL: (process.env.CONTACT_INBOX_EMAIL || '').trim(),
 
   COMMISSION_STANDARD_PERCENT: num(process.env.COMMISSION_STANDARD_PERCENT, 15),
   COMMISSION_PREMIUM_DEFAULT_PERCENT: num(process.env.COMMISSION_PREMIUM_DEFAULT_PERCENT, 20),
@@ -123,4 +128,7 @@ module.exports = {
   MAX_UPLOAD_MB: num(process.env.MAX_UPLOAD_MB, 10),
   UPLOAD_RATE_LIMIT_WINDOW_MS: num(process.env.UPLOAD_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
   UPLOAD_RATE_LIMIT_MAX: num(process.env.UPLOAD_RATE_LIMIT_MAX, 60),
+
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
 };

@@ -1,6 +1,22 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { API_BASE_URL } = require('../../constants/constant');
+const { API_BASE_URL, APP_URL } = require('../../constants/constant');
+
+/** Public URL path matches on-disk layout: public/uploads → /public/uploads/… */
+function buildPublicUploadUrl(req, filename) {
+  const pathSeg = `/public/uploads/${encodeURIComponent(filename)}`;
+  const base = (API_BASE_URL || APP_URL || '').replace(/\/$/, '');
+  if (base) {
+    return `${base}${pathSeg}`;
+  }
+  const xfProto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proto = xfProto || req.protocol || 'http';
+  const host = req.get('host');
+  if (host) {
+    return `${proto}://${host}${pathSeg}`;
+  }
+  return pathSeg;
+}
 const { validateFileBuffer } = require('../utils/fileValidation');
 const { recordUpload } = require('../models/uploadAudit');
 
@@ -60,7 +76,7 @@ exports.upload = async (req, res) => {
       savedPath = finalPath;
     }
 
-    const publicUrl = `${(API_BASE_URL || '').replace(/\/$/, '')}/uploads/${encodeURIComponent(finalFilename)}`;
+    const publicUrl = buildPublicUploadUrl(req, finalFilename);
     const storageKey = path.relative(path.join(__dirname, '../..'), finalPath).replace(/\\/g, '/');
 
     await recordUpload({

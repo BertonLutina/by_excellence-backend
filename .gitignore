@@ -1,5 +1,6 @@
 node_modules
 .env
+!.env.example
 
 # Fichiers uploadés (ne jamais versionner — volumineux et cassent souvent le push HTTPS)
 public/uploads/*
