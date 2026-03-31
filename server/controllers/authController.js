@@ -6,8 +6,7 @@ const { verificationEmail, resetPasswordEmail } = require('../utils/emailTemplat
 const Client = require('../models/Client');
 const Provider = require('../models/Provider');
 const Admin = require('../models/Admin');
-const JWT_SECRET = process.env.JWT_SECRET || '';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/constant');
 
 const ID_TO_ROLE = { 1: 'client', 2: 'provider', 3: 'admin' };
 const roleString = (user) => (user && user.role != null ? ID_TO_ROLE[user.role] ?? String(user.role) : undefined);

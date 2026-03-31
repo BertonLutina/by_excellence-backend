@@ -117,6 +117,8 @@ CREATE TABLE providers (
     review_count INT DEFAULT 0,
     status ENUM('active','inactive','pending') DEFAULT 'pending',
     company_name VARCHAR(255),
+    structure_type ENUM('solo','team') NOT NULL DEFAULT 'solo',
+    worker_count INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Intervenants (1 = seul, 2+ = équipe)',
     siret VARCHAR(14),
     vat_number VARCHAR(50),
     legal_address TEXT,
@@ -155,9 +157,15 @@ CREATE TABLE provider_availability (
 -- =====================================================
 CREATE TABLE service_requests (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    client_id BIGINT UNSIGNED NOT NULL,
+    client_id BIGINT UNSIGNED NULL,
+    client_name VARCHAR(255) NULL,
+    client_email VARCHAR(255) NULL,
+    client_phone VARCHAR(50) NULL,
     provider_id BIGINT UNSIGNED NOT NULL,
+    provider_name VARCHAR(255) NULL,
     service_description TEXT NOT NULL,
+    is_combo BOOLEAN NOT NULL DEFAULT FALSE,
+    combo_payload JSON NULL,
     preferred_date DATE,
     budget VARCHAR(100),
     status ENUM(

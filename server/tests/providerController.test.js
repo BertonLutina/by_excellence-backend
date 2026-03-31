@@ -51,6 +51,33 @@ test('filtering providers by tier works', async () => {
   assert.equal(calls[0].filters.provider_tier, 'premium');
 });
 
+test('include_total returns items and total and passes offset', async () => {
+  const originalFindAll = Provider.findAll;
+  const originalCountAll = Provider.countAll;
+  Provider.findAll = async (opts) => {
+    assert.equal(opts.offset, 16);
+    assert.equal(opts.limit, 8);
+    return [{ id: 2 }];
+  };
+  Provider.countAll = async (opts) => {
+    assert.equal(opts.filters.status, 'active');
+    return 42;
+  };
+
+  const req = { query: { status: 'active', limit: '8', offset: '16', include_total: '1', sort: '-rating' } };
+  const res = createMockRes();
+
+  await controller.getAll(req, res);
+
+  Provider.findAll = originalFindAll;
+  Provider.countAll = originalCountAll;
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(Array.isArray(res.body.items), true);
+  assert.equal(res.body.items.length, 1);
+  assert.equal(res.body.total, 42);
+});
+
 test('create provider sets correct tier from price_from', async () => {
   const originalCreate = Provider.create;
   let capturedPayload = null;
@@ -69,11 +96,20 @@ test('create provider sets correct tier from price_from', async () => {
   assert.equal(res.statusCode, 201);
   assert.equal(capturedPayload.provider_tier, 'standard');
   assert.equal(res.body.provider_tier, 'standard');
+  assert.equal(capturedPayload.structure_type, 'solo');
+  assert.equal(capturedPayload.worker_count, 1);
 });
 
 test('update price_from updates tier', async () => {
   const originalUpdate = Provider.update;
+  const originalFindById = Provider.findById;
   let capturedUpdatePayload = null;
+  Provider.findById = async () => ({
+    id: 10,
+    price_from: 500,
+    structure_type: 'solo',
+    worker_count: 1,
+  });
   Provider.update = async (id, payload) => {
     capturedUpdatePayload = payload;
     return { id, ...payload };
@@ -85,6 +121,7 @@ test('update price_from updates tier', async () => {
   await controller.update(req, res);
 
   Provider.update = originalUpdate;
+  Provider.findById = originalFindById;
 
   assert.equal(res.statusCode, 200);
   assert.equal(capturedUpdatePayload.provider_tier, 'premium');
@@ -100,3 +137,4 @@ test('invalid provider_tier in body returns 400', async () => {
   assert.equal(res.statusCode, 400);
   assert.match(res.body.error, /Invalid provider_tier/i);
 });
+
