@@ -32,8 +32,12 @@ class Favorite {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const sortCol = sort.startsWith('-') ? sort.slice(1) : sort;
     const sortDir = sort.startsWith('-') ? 'DESC' : order || 'ASC';
-    const sql = `SELECT * FROM \`${TABLE}\` ${where} ORDER BY \`${sortCol}\` ${sortDir} LIMIT ? OFFSET ?`;
-    const result = await executeSQL(sql, [...values, Number(limit) || 100, Number(offset) || 0]);
+    // Use literal LIMIT/OFFSET integers — prepared LIMIT ? OFFSET ? can trigger
+    // ER_WRONG_ARGUMENTS / "Incorrect arguments to mysqld_stmt_execute" on some MySQL/Percona builds.
+    const safeLimit = Math.max(0, Math.floor(Number(limit) || 100));
+    const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+    const sql = `SELECT * FROM \`${TABLE}\` ${where} ORDER BY \`${sortCol}\` ${sortDir} LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+    const result = await executeSQL(sql, values);
     return Array.isArray(result) ? result : [];
   }
 

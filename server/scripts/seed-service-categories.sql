@@ -1,5 +1,8 @@
--- Service categories from CSV export. Run: mysql -u root -p by_excellence < scripts/seed-service-categories.sql
+-- Service categories from CSV export. Run: mysql -u root -p by_excellence < server/scripts/seed-service-categories.sql
 -- Table: service_categories (id AUTO_INCREMENT, name, description, icon, image_url, created_at)
+--
+-- One seeded provider per category (users + profiles, standard tier if price_from <= 1000 else premium):
+--   node server/scripts/seedProvidersByCategory.js
 
 INSERT INTO service_categories (name, description, icon, image_url, created_at) VALUES
 ('Bien-être et thérapie', 'Psychologie et accompagnement personnel', 'Heart', '', '2026-02-06 15:08:17'),
@@ -47,4 +50,9 @@ INSERT INTO service_categories (name, description, icon, image_url, created_at) 
 ('Services juridiques', 'Avocats, notaires et conseils juridiques', 'Scale', '', '2026-02-06 15:08:17'),
 ('Maintenance industrielle', 'Entretien et maintenance d''équipements', 'Settings', '', '2026-02-06 15:08:17'),
 ('Design et UX', 'Design graphique et expérience utilisateur', 'Palette', '', '2026-02-06 15:08:17'),
-('Déménagement', 'Services de déménagement professionnel', 'Package', '', '2026-02-06 15:08:17');
+('Déménagement', 'Services de déménagement professionnel', 'Package', '', '2026-02-06 15:08:17'),
+('Décoration', 'Décoration d''événements, scénographie et floral', 'Flower2', '', '2026-02-06 15:08:17'),
+('Wedding planner', 'Organisation et coordination de mariages', 'CalendarHeart', '', '2026-02-06 15:08:17'),
+('Make-up artist', 'Maquillage professionnel pour événements et shootings', 'Brush', '', '2026-02-06 15:08:17'),
+('Chorale', 'Prestations chorales et musique live', 'Mic2', '', '2026-02-06 15:08:17'),
+('Coiffeur et coiffeuse', 'Coiffure à domicile et pour événements', 'Scissors', '', '2026-02-06 15:08:17');

@@ -1,31 +1,54 @@
+const fs = require('fs');
+const path = require('path');
 const router = require('express').Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
+const uploadLimiter = require('../middleware/uploadRateLimit');
 const ctrl = require('../controllers/uploadController');
+const { MAX_UPLOAD_MB } = require('../../constants/constant');
 
-const configuredUploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
-let uploadDir = configuredUploadDir;
+const maxBytes = Math.max(1, MAX_UPLOAD_MB) * 1024 * 1024;
+
+const uploadRoot = path.join(__dirname, '../../public/uploads');
 try {
-  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-} catch (err) {
-  // Fallback for environments where configured absolute path is unavailable.
-  uploadDir = path.join(__dirname, '../uploads');
-  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  console.warn(`[UPLOAD] Falling back to local upload dir because "${configuredUploadDir}" is not writable/creatable.`);
+  fs.mkdirSync(uploadRoot, { recursive: true });
+} catch {
+  // mkdir best-effort; multer will fail if truly unusable
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '';
-    const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
-    cb(null, name);
+  destination(req, file, cb) {
+    cb(null, uploadRoot);
+  },
+  filename(req, file, cb) {
+    const ext = path.extname(file.originalname || '') || '';
+    cb(null, `${file.fieldname}-${Date.now()}${ext}`);
   },
 });
-const upload = multer({ storage });
 
-router.post('/', authenticate, upload.single('file'), ctrl.upload);
+const upload = multer({
+  storage,
+  limits: { fileSize: maxBytes, files: 1 },
+});
+
+function handleMulter(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ error: 'File too large' });
+        }
+        return res.status(400).json({ error: err.message || 'Invalid upload' });
+      }
+      return next(err);
+    }
+    if (req.file) {
+      console.log('[upload] multer saved file:', req.file.filename, '→', req.file.path, `(${req.file.size} bytes)`);
+    }
+    next();
+  });
+}
+
+router.post('/', authenticate, uploadLimiter, handleMulter, ctrl.upload);
 
 module.exports = router;

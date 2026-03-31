@@ -77,6 +77,22 @@ class BaseModel {
     return Array.isArray(result) ? result : [];
   }
 
+  async countAll({ filters = {} } = {}) {
+    const conditions = [];
+    const values = [];
+    for (const [key, val] of Object.entries(filters)) {
+      if (val !== undefined && val !== null) {
+        conditions.push(`\`${key}\` = ?`);
+        values.push(val);
+      }
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `SELECT COUNT(*) AS cnt FROM \`${this.table}\` ${where}`;
+    const result = await executeSQL(sql, values);
+    const row = Array.isArray(result) ? result[0] : result;
+    return Number(row?.cnt) || 0;
+  }
+
   async create() {
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     if (!this.autoIncrement) this.id = this.id || uuidv4();
@@ -97,10 +113,15 @@ class BaseModel {
   async update() {
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     if (this.columns.includes('updated_date')) this.updated_date = now;
-    const cols = this.getUpdateColumns();
+    const allUpdatable = this.getUpdateColumns();
+    // PATCH semantics: only bind columns that were set (omit undefined). Use null to clear a column.
+    const cols = allUpdatable.filter((c) => this[c] !== undefined);
+    if (cols.length === 0) {
+      return this.findById(this.id);
+    }
     const sets = cols.map((c) => `\`${c}\` = ?`).join(', ');
     const sql = `UPDATE \`${this.table}\` SET ${sets} WHERE id = ?`;
-    const values = this.getValues();
+    const values = [...cols.map((c) => this[c]), this.id];
     await executeSQL(sql, values);
     return this.findById(this.id);
   }
