@@ -6,7 +6,7 @@ const TABLE = 'providers';
 const COLUMNS = [
   'id', 'user_id', 'display_name', 'profession', 'bio', 'photo_url', 'banner_url', 'city', 'category_id',
   'price_from', 'provider_tier', 'premium_commission_percent', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'structure_type', 'worker_count', 'siret', 'vat_number',
-  'legal_address', 'insurance_certificate', 'video_url', 'created_at', 'updated_date',
+  'legal_address', 'coords', 'insurance_certificate', 'video_url', 'access', 'status_verification', 'created_at', 'updated_date',
 ];
 
 class Provider extends BaseModel {
@@ -39,8 +39,11 @@ class Provider extends BaseModel {
     this.siret = body?.siret;
     this.vat_number = body?.vat_number;
     this.legal_address = body?.legal_address;
+    this.coords = body?.coords;
     this.insurance_certificate = body?.insurance_certificate;
     this.video_url = body?.video_url;
+    this.access = body?.access;
+    this.status_verification = body?.status_verification;
     this.created_at = body?.created_at;
     this.updated_date = body?.updated_date;
   }

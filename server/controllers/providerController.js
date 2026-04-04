@@ -149,6 +149,21 @@ module.exports = {
     }
   },
 
+  updateStatus: async (req, res) => {
+    try {
+      const status = req.body?.status;
+      if (!['active', 'inactive', 'pending'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Allowed values: active, inactive, pending" });
+      }
+      const existing = await Provider.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      const row = await Provider.update(req.params.id, { status });
+      return res.json(serializeProviderRow(row));
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   remove: async (req, res) => {
     try {
       await Provider.delete(req.params.id);

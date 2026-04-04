@@ -131,4 +131,11 @@ module.exports = {
 
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+
+  /** Checkout Session ui_mode=elements (see POST /api/stripe/create-checkout-session) */
+  STRIPE_ELEMENTS_PRICE_ID: (process.env.STRIPE_ELEMENTS_PRICE_ID || '').trim(),
+  /** Path on FRONTEND_ORIGIN for return_url (default matches Stripe sample: /complete.html) */
+  STRIPE_ELEMENTS_RETURN_PATH: (process.env.STRIPE_ELEMENTS_RETURN_PATH || '/#/stripecheckoutcomplete').trim(),
+  /** Requires Stripe Tax setup on the account */
+  STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX: bool(process.env.STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX, false),
 };

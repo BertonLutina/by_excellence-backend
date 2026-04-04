@@ -55,10 +55,12 @@ CREATE TABLE clients (
     user_id BIGINT UNSIGNED NOT NULL,
     full_name VARCHAR(150),
     phone VARCHAR(50),
+    status ENUM('active','inactive','pending') NOT NULL DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     UNIQUE KEY uq_client_user (user_id),
+    INDEX idx_client_status (status),
     CONSTRAINT fk_client_user
         FOREIGN KEY (user_id)
         REFERENCES users(id)
@@ -72,10 +74,12 @@ CREATE TABLE admins (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT UNSIGNED NOT NULL,
     full_name VARCHAR(150),
+    status ENUM('active','inactive','pending') NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     UNIQUE KEY uq_admin_user (user_id),
+    INDEX idx_admin_status (status),
     CONSTRAINT fk_admin_user
         FOREIGN KEY (user_id)
         REFERENCES users(id)
@@ -122,8 +126,11 @@ CREATE TABLE providers (
     siret VARCHAR(14),
     vat_number VARCHAR(50),
     legal_address TEXT,
+    coords JSON,
     insurance_certificate TEXT,
     video_url TEXT,
+    access TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=visible in webapp, 0=no access',
+    status_verification TINYINT NOT NULL DEFAULT 0 COMMENT '0=nothing, 1=sent, 2=in treatment, 3=accepted, 4=refused',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -134,7 +141,9 @@ CREATE TABLE providers (
     INDEX idx_provider_status (status),
     INDEX idx_provider_city (city),
     INDEX idx_provider_rating (rating),
-    INDEX idx_provider_tier (provider_tier)
+    INDEX idx_provider_tier (provider_tier),
+    INDEX idx_provider_access (access),
+    INDEX idx_provider_status_verification (status_verification)
 ) ENGINE=InnoDB;
 
 -- =====================================================

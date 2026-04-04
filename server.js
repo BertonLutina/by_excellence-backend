@@ -68,6 +68,10 @@ app.use('/api/stripe', stripeWebhookRoutes);
 app.use(express.json());
 trace('middleware ready');
 
+const stripeCheckoutElementsRoutes = require('./server/routes/stripeCheckoutElements');
+app.use('/api/stripe', stripeCheckoutElementsRoutes);
+trace('stripe checkout elements routes mounted');
+
 const mountSafe = (mountPath, routeFile) => {
   try {
     trace(`mounting ${mountPath} from ${routeFile}`);
@@ -82,6 +86,8 @@ const mountSafe = (mountPath, routeFile) => {
 
 mountSafe('/api/auth', './server/routes/auth');
 mountSafe('/api/users', './server/routes/users');
+mountSafe('/api/clients', './server/routes/clients');
+mountSafe('/api/admins', './server/routes/admins');
 mountSafe('/api/service-categories', './server/routes/serviceCategories');
 mountSafe('/api/providers', './server/routes/providers');
 mountSafe('/api/service-requests', './server/routes/serviceRequests');
