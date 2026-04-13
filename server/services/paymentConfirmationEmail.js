@@ -82,7 +82,7 @@ async function sendPaymentConfirmationEmail(paymentId) {
                         </a>
                     </p>
                     <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                        L'équipe By Excellence<br>
+                        L'équipe By Excellence African Services<br>
                         Un service de qualité et de distinction.
                     </p>
                 </div>

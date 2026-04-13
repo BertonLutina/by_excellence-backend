@@ -31,7 +31,8 @@ function enrichCreateData(entityName, req, data) {
 const createEntityController = (model, entityName) => ({
   getAll: async (req, res) => {
     try {
-      const { sort, limit, offset, ...filters } = req.query;
+      const { sort, limit, offset, include_total, ...filters } = req.query;
+      void include_total;
       const rows = await model.findAll({ filters, sort, limit, offset });
       res.json(rows);
     } catch (err) {

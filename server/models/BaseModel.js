@@ -1,6 +1,7 @@
 /* eslint-disable prettier/prettier */
 const { executeSQL } = require('../db/db');
 const { v4: uuidv4 } = require('uuid');
+const { sanitizeFilters, resolveSortColumn } = require('../utils/sqlQueryGuards');
 
 class BaseModel {
   constructor(body, table, columns, options = {}) {
@@ -59,17 +60,15 @@ class BaseModel {
   }
 
   async findAll({ filters = {}, sort = 'created_at', order = 'DESC', limit = 100, offset = 0 } = {}) {
+    const cleanFilters = sanitizeFilters(filters, this.columns);
     const conditions = [];
     const values = [];
-    for (const [key, val] of Object.entries(filters)) {
-      if (val !== undefined && val !== null) {
-        conditions.push(`\`${key}\` = ?`);
-        values.push(val);
-      }
+    for (const [key, val] of Object.entries(cleanFilters)) {
+      conditions.push(`\`${key}\` = ?`);
+      values.push(val);
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const sortCol = sort.startsWith('-') ? sort.slice(1) : sort;
-    const sortDir = sort.startsWith('-') ? 'DESC' : order || 'ASC';
+    const { sortCol, sortDir } = resolveSortColumn(sort, order, this.columns);
     const safeLimit = Number(limit) || 100;
     const safeOffset = Number(offset) || 0;
     const sql = `SELECT * FROM \`${this.table}\` ${where} ORDER BY \`${sortCol}\` ${sortDir} LIMIT ${safeLimit} OFFSET ${safeOffset}`;
@@ -78,13 +77,12 @@ class BaseModel {
   }
 
   async countAll({ filters = {} } = {}) {
+    const cleanFilters = sanitizeFilters(filters, this.columns);
     const conditions = [];
     const values = [];
-    for (const [key, val] of Object.entries(filters)) {
-      if (val !== undefined && val !== null) {
-        conditions.push(`\`${key}\` = ?`);
-        values.push(val);
-      }
+    for (const [key, val] of Object.entries(cleanFilters)) {
+      conditions.push(`\`${key}\` = ?`);
+      values.push(val);
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const sql = `SELECT COUNT(*) AS cnt FROM \`${this.table}\` ${where}`;

@@ -65,12 +65,21 @@ app.use(cors({ origin: corsOrigin, credentials: true }));
 const stripeWebhookRoutes = require('./server/routes/stripeWebhook');
 app.use('/api/stripe', stripeWebhookRoutes);
 
+// Stripe CLI: `stripe listen --forward-to http://localhost:8080/webhook`
+// (same handler as POST /api/stripe/webhook; use the whsec_ printed by `stripe listen` in STRIPE_WEBHOOK_SECRET)
+const stripeWebhookController = require('./server/controllers/stripeWebhookController');
+app.post('/webhook', express.raw({ type: 'application/json' }), stripeWebhookController.handle);
+
 app.use(express.json());
 trace('middleware ready');
 
 const stripeCheckoutElementsRoutes = require('./server/routes/stripeCheckoutElements');
 app.use('/api/stripe', stripeCheckoutElementsRoutes);
 trace('stripe checkout elements routes mounted');
+
+const stripePlatformRoutes = require('./server/routes/stripePlatform');
+app.use('/api/stripe-admin/v1', stripePlatformRoutes);
+trace('stripe admin platform routes mounted');
 
 const mountSafe = (mountPath, routeFile) => {
   try {
@@ -126,7 +135,10 @@ app.get('/', (req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack);
   trace(`express error: ${err.message || 'unknown'}`);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  const publicMessage = isProd
+    ? 'Internal server error'
+    : err.message || 'Internal server error';
+  res.status(500).json({ error: publicMessage });
 });
 
 process.on('unhandledRejection', (reason) => {

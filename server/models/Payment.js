@@ -1,6 +1,7 @@
 /* eslint-disable prettier/prettier */
 const BaseModel = require('./BaseModel');
 const { executeSQL } = require('../db/db');
+const { sanitizeFilters, resolveSortColumn } = require('../utils/sqlQueryGuards');
 
 const TABLE = 'payments';
 const COLUMNS = [
@@ -37,6 +38,7 @@ class Payment extends BaseModel {
     const needsJoin = client_id != null || provider_id != null;
     if (!needsJoin) return super.findAll(opts);
 
+    const cleanRest = sanitizeFilters(restFilters, COLUMNS);
     const conditions = [];
     const values = [];
     if (client_id != null) {
@@ -47,14 +49,11 @@ class Payment extends BaseModel {
       conditions.push('r.provider_id = ?');
       values.push(provider_id);
     }
-    for (const [key, val] of Object.entries(restFilters)) {
-      if (val !== undefined && val !== null) {
-        conditions.push(`p.\`${key}\` = ?`);
-        values.push(val);
-      }
+    for (const [key, val] of Object.entries(cleanRest)) {
+      conditions.push(`p.\`${key}\` = ?`);
+      values.push(val);
     }
-    const sortCol = sort.startsWith('-') ? sort.slice(1) : sort;
-    const sortDir = sort.startsWith('-') ? 'DESC' : order || 'ASC';
+    const { sortCol, sortDir } = resolveSortColumn(sort, order, COLUMNS);
     const safeLimit = Number(limit) || 100;
     const safeOffset = Number(offset) || 0;
     const sql = `SELECT p.* FROM \`${TABLE}\` p

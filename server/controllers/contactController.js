@@ -44,8 +44,8 @@ exports.postContact = async (req, res) => {
   }
 
   const subj = subject
-    ? `[By Excellence — Contact] ${subject}`
-    : `[By Excellence — Contact] Message de ${name}`;
+    ? `[By Excellence African Services — Contact] ${subject}`
+    : `[By Excellence African Services — Contact] Message de ${name}`;
 
   const html = `
     <p><strong>Nom</strong> ${escapeHtml(name)}</p>

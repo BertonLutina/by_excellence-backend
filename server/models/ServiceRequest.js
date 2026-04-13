@@ -1,6 +1,7 @@
 /* eslint-disable prettier/prettier */
 const BaseModel = require('./BaseModel');
 const { bindJsonDocument } = require('../utils/portfolioImages');
+const { executeSQL } = require('../db/db');
 
 const TABLE = 'service_requests';
 const COLUMNS = [
@@ -63,5 +64,19 @@ ServiceRequest.findById = (id) => new ServiceRequest({}).findById(id);
 ServiceRequest.create = (data) => new ServiceRequest(data).create();
 ServiceRequest.update = (id, data) => new ServiceRequest({ id, ...data }).update();
 ServiceRequest.delete = (id) => new ServiceRequest({ id }).delete();
+ServiceRequest.attachClientIdByEmail = async (userId, email) => {
+  const uid = Number(userId);
+  const em = String(email || '').trim().toLowerCase();
+  if (!Number.isFinite(uid) || uid <= 0 || !em) return 0;
+  const sql = `
+    UPDATE \`${TABLE}\`
+    SET client_id = ?
+    WHERE client_id IS NULL
+      AND client_email IS NOT NULL
+      AND LOWER(TRIM(client_email)) = ?
+  `;
+  const result = await executeSQL(sql, [uid, em]);
+  return Number(result?.affectedRows || 0);
+};
 
 module.exports = ServiceRequest;

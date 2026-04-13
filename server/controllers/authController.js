@@ -6,7 +6,8 @@ const { verificationEmail, resetPasswordEmail } = require('../utils/emailTemplat
 const Client = require('../models/Client');
 const Provider = require('../models/Provider');
 const Admin = require('../models/Admin');
-const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/constant');
+const ServiceRequest = require('../models/ServiceRequest');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../../constants/constant');
 
 const ID_TO_ROLE = { 1: 'client', 2: 'provider', 3: 'admin' };
 const roleString = (user) => (user && user.role != null ? ID_TO_ROLE[user.role] ?? String(user.role) : undefined);
@@ -30,7 +31,7 @@ exports.register = async (req, res) => {
     // Send verification email (non-blocking)
     sendMail({
       to: email,
-      subject: 'Vérifiez votre adresse email — By Excellence',
+      subject: 'Vérifiez votre adresse email — By Excellence African Services',
       html: verificationEmail({ full_name, token: user.verification_token }),
     }).catch((err) => console.error('[Mail] verification send failed:', err.message));
 
@@ -51,6 +52,10 @@ exports.login = async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+    // Backfill legacy requests created before account linking:
+    // if client_email matches this user and client_id is NULL, attach it now.
+    await ServiceRequest.attachClientIdByEmail(user.id, user.email).catch(() => {});
 
     const client = await Client.findByUserId(user.id);
     const provider = await Provider.findByUserId(user.id);
@@ -87,6 +92,7 @@ exports.me = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
+    await ServiceRequest.attachClientIdByEmail(user.id, user.email).catch(() => {});
     res.json({ ...user, role: roleString(user) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -117,7 +123,7 @@ exports.resendVerification = async (req, res) => {
     const token = await User.setNewVerificationToken(user.id);
     sendMail({
       to: email,
-      subject: 'Vérifiez votre adresse email — By Excellence',
+      subject: 'Vérifiez votre adresse email — By Excellence African Services',
       html: verificationEmail({ full_name: user.full_name, token }),
     }).catch((err) => console.error('[Mail] resend failed:', err.message));
     res.json({ message: 'Verification email sent' });
@@ -136,7 +142,7 @@ exports.forgotPassword = async (req, res) => {
     const token = await User.setResetToken(user.id);
     sendMail({
       to: email,
-      subject: 'Réinitialisation de mot de passe — By Excellence',
+      subject: 'Réinitialisation de mot de passe — By Excellence African Services',
       html: resetPasswordEmail({ full_name: user.full_name, token }),
     }).catch((err) => console.error('[Mail] reset send failed:', err.message));
     res.json({ message: 'If that email exists, a reset link has been sent.' });

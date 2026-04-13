@@ -8,6 +8,7 @@ const { sendPaymentConfirmationEmail } = require('../services/paymentConfirmatio
 const { sendPaymentReminders } = require('../services/paymentRemindersService');
 const { sendStatusNotification } = require('../services/statusNotificationService');
 const { generateInvoicePdfForPayment } = require('../services/invoicePdfService');
+const { sendMail, isMailConfigured } = require('../utils/mailer');
 const Offer = require('../models/Offer');
 const { buildStripeProductName, buildStripeProductDescription, isComboRequest } = require('../utils/stripeProductCopy');
 const {
@@ -217,7 +218,7 @@ exports.invoke = async (req, res) => {
                     <p>Un remboursement de <strong>${(refund.amount / 100).toFixed(2)}€</strong> a été effectué sur votre moyen de paiement.</p>
                     <p>Le montant apparaîtra sur votre compte sous 5-10 jours ouvrés.</p>
                     <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                        L'équipe By Excellence
+                        L'équipe By Excellence African Services
                     </p>
                 </div>
             `,
@@ -245,6 +246,23 @@ exports.invoke = async (req, res) => {
         const out = await sendPaymentConfirmationEmail(payment_id);
         if (!out.ok) return res.status(404).json({ error: out.error });
         return res.json({ success: true });
+      }
+
+      case 'sendTestMail': {
+        if (!requireAdmin()) return;
+        if (!isMailConfigured()) {
+          return res.status(503).json({ error: 'SMTP is not configured on the server' });
+        }
+
+        const { to, subject, text } = params;
+        if (!to) return res.status(400).json({ error: 'to required' });
+
+        await sendMail({
+          to,
+          subject: subject || 'Nodemailer test',
+          html: `<p>${text || 'SMTP test email sent successfully.'}</p>`,
+        });
+        return res.json({ success: true, sent_to: to });
       }
 
       default:

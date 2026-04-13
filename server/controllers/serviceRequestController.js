@@ -1,7 +1,13 @@
 const createEntityController = require('./createEntityController');
 const ServiceRequest = require('../models/ServiceRequest');
+const User = require('../models/User');
+const Client = require('../models/Client');
 const { executeSQL } = require('../db/db');
 const { bindJsonDocument } = require('../utils/portfolioImages');
+const { sendMail, isMailConfigured } = require('../utils/mailer');
+const { autoClientAccountEmail } = require('../utils/emailTemplates');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const {
   normalizeProviderId,
   deriveIsCombo,
@@ -23,6 +29,72 @@ const SERVICE_REQUEST_STATUSES = new Set([
 ]);
 
 const base = createEntityController(ServiceRequest, 'ServiceRequest');
+
+const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
+
+function pickLocale(req, body = {}) {
+  const bodyLang = String(body.lang || body.locale || '').trim().toLowerCase();
+  const headerLang = String(req?.headers?.['accept-language'] || '').toLowerCase();
+  const source = bodyLang || headerLang;
+  if (source.startsWith('nl')) return 'nl';
+  if (source.startsWith('en')) return 'en';
+  return 'fr';
+}
+
+function generateTempPassword(len = 12) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  let out = '';
+  const bytes = crypto.randomBytes(len * 2);
+  for (let i = 0; i < bytes.length && out.length < len; i++) {
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
+}
+
+async function ensureClientForEmail({ email, name, phone, locale = 'fr' }) {
+  const em = normalizeEmail(email);
+  let user = await User.findByEmail(em);
+  let createdPassword = null;
+
+  if (!user) {
+    createdPassword = generateTempPassword(12);
+    const password_hash = await bcrypt.hash(createdPassword, 10);
+    user = await User.create({
+      email: em,
+      password_hash,
+      full_name: name || em,
+      role: 'client',
+    });
+
+    sendMail({
+      to: em,
+      subject: 'Votre compte By Excellence African Services',
+      html: autoClientAccountEmail({
+        full_name: name || user.full_name || null,
+        email: em,
+        temp_password: createdPassword,
+        locale,
+      }),
+    }).catch((err) => {
+      console.error('[ServiceRequest auto-account] mail failed:', err.message);
+    });
+  }
+
+  const uid = user?.id;
+  if (!uid) throw new Error('Unable to create/link client user');
+
+  const existingClient = await Client.findByUserId(uid);
+  if (!existingClient) {
+    await Client.create({
+      user_id: uid,
+      full_name: name || user.full_name || null,
+      phone: phone || null,
+      status: 'active',
+    });
+  }
+
+  return { client_id: uid, createdPassword };
+}
 
 /** Enrich getOne with client_email (client_id = users.id for client). */
 const getOne = async (req, res) => {
@@ -91,6 +163,7 @@ function parseComboPayloadBody(raw) {
 const create = async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const locale = pickLocale(req, body);
     const provider_id = normalizeProviderId(body.provider_id);
     if (!provider_id) {
       return res.status(400).json({ error: 'provider_id is required' });
@@ -125,6 +198,16 @@ const create = async (req, res) => {
         return res.status(400).json({
           error: 'client_email and client_name are required',
         });
+      }
+      const linked = await ensureClientForEmail({
+        email: client_email,
+        name: client_name,
+        phone: body.client_phone != null ? String(body.client_phone) : null,
+        locale,
+      });
+      client_id = linked.client_id;
+      if (linked.createdPassword && !isMailConfigured()) {
+        console.warn('[ServiceRequest auto-account] SMTP not configured; account created without email send');
       }
     }
 

@@ -12,7 +12,8 @@
     "restart": "node server.js",
     "dev": "nodemon server.js",
     "dev:prod": "NODE_ENV=production nodemon server.js",
-    "test": "node --test server/tests/"
+    "test": "node --test server/tests/",
+    "mail:test": "node server/scripts/test-mailer.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.967.0",

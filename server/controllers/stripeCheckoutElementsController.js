@@ -6,6 +6,7 @@ const {
   STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX,
 } = require('../../constants/constant');
 const { getStripe } = require('../utils/stripeClient');
+const { respondStripeError } = require('../utils/stripeHttpError');
 
 function returnBaseUrl() {
   const base = (FRONTEND_ORIGIN || (IS_DEV ? 'http://localhost:5173' : '')).trim().replace(/\/$/, '');
@@ -57,9 +58,7 @@ exports.createCheckoutSession = async (req, res) => {
     const session = await stripe.checkout.sessions.create(payload);
     return res.json({ clientSecret: session.client_secret });
   } catch (err) {
-    const msg = err?.message || 'Stripe checkout session failed';
-    console.error('[createCheckoutSession]', msg);
-    return res.status(400).json({ error: msg });
+    return respondStripeError(res, err, 'createCheckoutSession');
   }
 };
 
@@ -94,8 +93,6 @@ exports.sessionStatus = async (req, res) => {
       payment_intent_status,
     });
   } catch (err) {
-    const msg = err?.message || 'Failed to retrieve session';
-    console.error('[sessionStatus]', msg);
-    return res.status(400).json({ error: msg });
+    return respondStripeError(res, err, 'sessionStatus');
   }
 };

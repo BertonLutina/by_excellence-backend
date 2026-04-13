@@ -1,7 +1,6 @@
 const { APP_URL } = require('../../constants/constant');
 const BRAND_COLOR = '#0a0a5c';
 const ACCENT = '#d4a848';
-const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
 const base = (content) => `
 <!DOCTYPE html>
@@ -74,4 +73,58 @@ const resetPasswordEmail = ({ full_name, token }) => {
   `);
 };
 
-module.exports = { verificationEmail, resetPasswordEmail };
+const AUTO_CLIENT_I18N = {
+  fr: {
+    title: 'Votre compte client a été créé',
+    greeting: (name) => `Bonjour ${name || 'là'},`,
+    intro:
+      'Suite à votre demande de service sur By Excellence, un compte client a été créé automatiquement afin de suivre vos demandes et paiements.',
+    emailLabel: 'Email',
+    passwordLabel: 'Mot de passe temporaire',
+    cta: 'Se connecter',
+    security: 'Pour votre sécurité, changez ce mot de passe dès votre première connexion.',
+    fallback: 'Si le bouton ne fonctionne pas, copiez ce lien :',
+  },
+  en: {
+    title: 'Your client account has been created',
+    greeting: (name) => `Hello ${name || 'there'},`,
+    intro:
+      'Following your service request on By Excellence, a client account was created automatically so you can track your requests and payments.',
+    emailLabel: 'Email',
+    passwordLabel: 'Temporary password',
+    cta: 'Sign in',
+    security: 'For your security, please change this password after your first login.',
+    fallback: 'If the button does not work, copy this link:',
+  },
+  nl: {
+    title: 'Uw klantaccount is aangemaakt',
+    greeting: (name) => `Hallo ${name || 'daar'},`,
+    intro:
+      'Naar aanleiding van uw serviceaanvraag op By Excellence is automatisch een klantaccount aangemaakt zodat u uw aanvragen en betalingen kunt volgen.',
+    emailLabel: 'E-mail',
+    passwordLabel: 'Tijdelijk wachtwoord',
+    cta: 'Inloggen',
+    security: 'Voor uw veiligheid moet u dit wachtwoord wijzigen na uw eerste login.',
+    fallback: 'Als de knop niet werkt, kopieer dan deze link:',
+  },
+};
+
+const autoClientAccountEmail = ({ full_name, email, temp_password, locale = 'fr' }) => {
+  const lang = AUTO_CLIENT_I18N[locale] ? locale : 'fr';
+  const txt = AUTO_CLIENT_I18N[lang];
+  const loginLink = `${APP_URL}/#/login`;
+  return base(`
+    ${h1(txt.title)}
+    ${p(txt.greeting(full_name))}
+    ${p(txt.intro)}
+    <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin:8px 0 18px;">
+      <p style="margin:0 0 6px;font-size:14px;color:#111827;"><strong>${txt.emailLabel}:</strong> ${email}</p>
+      <p style="margin:0;font-size:14px;color:#111827;"><strong>${txt.passwordLabel}:</strong> ${temp_password}</p>
+    </div>
+    <div style="text-align:center;">${btn(loginLink, txt.cta)}</div>
+    ${p(txt.security)}
+    ${p(`${txt.fallback}<br/><a href="${loginLink}" style="color:${ACCENT};word-break:break-all;">${loginLink}</a>`)}
+  `);
+};
+
+module.exports = { verificationEmail, resetPasswordEmail, autoClientAccountEmail };

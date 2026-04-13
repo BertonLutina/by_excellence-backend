@@ -1,7 +1,36 @@
-const { STRIPE_WEBHOOK_SECRET } = require('../../constants/constant');
+const { STRIPE_WEBHOOK_SECRET, QUIET_LOGS } = require('../../constants/constant');
 const { getStripe } = require('../utils/stripeClient');
 const { markPaymentPaid } = require('../services/paymentPostProcessService');
 const { sendPaymentConfirmationEmail } = require('../services/paymentConfirmationEmail');
+const DOCUMENTED_WEBHOOK_TYPES = require('../constants/stripeWebhookEventTypes');
+
+function objectId(obj) {
+  return obj && typeof obj === 'object' && obj.id != null ? String(obj.id) : '';
+}
+
+async function handleCheckoutSessionPaid(session) {
+  const paymentId = session.metadata?.payment_id;
+  const requestId = session.metadata?.request_id;
+  if (!paymentId || !requestId) {
+    console.warn('[Stripe webhook] missing metadata on session', session.id);
+    return;
+  }
+
+  const result = await markPaymentPaid(paymentId, { payment_method: 'card', fromWebhook: true });
+  if (!result.ok && result.code !== 400) {
+    console.error('[Stripe webhook] markPaymentPaid failed', result);
+  } else if (result.ok) {
+    await sendPaymentConfirmationEmail(paymentId).catch((e) =>
+      console.error('[Stripe webhook] confirmation email:', e.message)
+    );
+  }
+}
+
+function logWebhookEvent(event) {
+  if (QUIET_LOGS) return;
+  const id = objectId(event.data?.object);
+  console.log(`[Stripe webhook] ${event.type}${id ? ` ${id}` : ''}`);
+}
 
 exports.handle = async (req, res) => {
   const stripe = getStripe();
@@ -19,24 +48,27 @@ exports.handle = async (req, res) => {
   }
 
   try {
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const paymentId = session.metadata?.payment_id;
-      const requestId = session.metadata?.request_id;
-      if (!paymentId || !requestId) {
-        console.warn('[Stripe webhook] missing metadata on session', session.id);
-        return res.json({ received: true });
-      }
+    switch (event.type) {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded':
+        await handleCheckoutSessionPaid(event.data.object);
+        break;
 
-      const result = await markPaymentPaid(paymentId, { payment_method: 'card', fromWebhook: true });
-      if (!result.ok && result.code !== 400) {
-        console.error('[Stripe webhook] markPaymentPaid failed', result);
-      } else if (result.ok) {
-        await sendPaymentConfirmationEmail(paymentId).catch((e) =>
-          console.error('[Stripe webhook] confirmation email:', e.message)
+      case 'checkout.session.async_payment_failed':
+        console.warn(
+          '[Stripe webhook] checkout.session.async_payment_failed',
+          objectId(event.data.object) || event.data.object?.id
         );
-      }
+        break;
+
+      default:
+        if (DOCUMENTED_WEBHOOK_TYPES.has(event.type)) {
+          logWebhookEvent(event);
+        } else {
+          console.log('[Stripe webhook] event (add to stripeWebhookEventTypes if standard):', event.type);
+        }
     }
+
     return res.json({ received: true });
   } catch (err) {
     console.error('[Stripe webhook]', err);

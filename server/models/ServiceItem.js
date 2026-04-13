@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 const BaseModel = require('./BaseModel');
+const { bindJsonDocument } = require('../utils/portfolioImages');
 
 const TABLE = 'service_items';
 const COLUMNS = [
@@ -9,21 +10,21 @@ const COLUMNS = [
 
 class ServiceItem extends BaseModel {
   constructor(body = {}) {
-    super({}, TABLE, COLUMNS);
+    super({}, TABLE, COLUMNS, { autoIncrement: true });
     this.id = body?.id;
     this.provider_id = body?.provider_id;
     this.title = body?.title;
     this.description = body?.description;
     this.price = body?.price;
-    this.price_type = body?.price_type;
+    this.price_type = body?.price_type || 'fixed';
     this.duration = body?.duration;
-    this.order = body?.order;
-    this.is_active = body?.is_active;
-    this.includes = body?.includes;
+    this.order = body?.order ?? 0;
+    this.is_active = body?.is_active ?? 1;
+    this.includes = bindJsonDocument(body?.includes ?? []);
     this.image_url = body?.image_url;
-    this.created_date = body?.created_date;
-    this.updated_date = body?.updated_date;
-    this.created_by = body?.created_by;
+    this.created_date = body?.created_date ;
+    this.updated_date = body?.updated_date ;
+    this.created_by = body?.created_by || null;
   }
 }
 

@@ -164,7 +164,28 @@ module.exports = {
     }
   },
 
-  remove: async (req, res) => {
+  updateVerified: async (req, res) => {
+    try {
+      let is_verified = req.body?.is_verified;
+      if (is_verified !== undefined && is_verified !== null) {
+        if (typeof is_verified !== 'number') {
+          return res.status(400).json({ error: "is_verified must be a number" });
+        }
+        is_verified = is_verified
+      }
+      else {
+        is_verified = null;
+      }
+      const existing = await Provider.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      const row = await Provider.update(req.params.id, { is_verified });
+      return res.json(serializeProviderRow(row));
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
+    remove: async (req, res) => {
     try {
       await Provider.delete(req.params.id);
       return res.json({ success: true, id: req.params.id });

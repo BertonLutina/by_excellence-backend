@@ -162,6 +162,32 @@ CREATE TABLE provider_availability (
 ) ENGINE=InnoDB;
 
 -- =====================================================
+-- SERVICE ITEMS (SERVICE PACKAGES)
+-- =====================================================
+CREATE TABLE service_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    provider_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    price_type ENUM('fixed','hourly','starting_from','on_quote') NOT NULL DEFAULT 'fixed',
+    duration VARCHAR(120),
+    `order` INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    includes JSON,
+    image_url TEXT,
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by BIGINT UNSIGNED NULL,
+
+    INDEX idx_service_item_provider (provider_id),
+    INDEX idx_service_item_active (is_active),
+    INDEX idx_service_item_order (`order`),
+    CONSTRAINT fk_service_item_provider FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    CONSTRAINT fk_service_item_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- =====================================================
 -- SERVICE REQUESTS
 -- =====================================================
 CREATE TABLE service_requests (

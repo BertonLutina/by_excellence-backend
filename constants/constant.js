@@ -129,6 +129,10 @@ module.exports = {
   UPLOAD_RATE_LIMIT_WINDOW_MS: num(process.env.UPLOAD_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
   UPLOAD_RATE_LIMIT_MAX: num(process.env.UPLOAD_RATE_LIMIT_MAX, 60),
 
+  /** POST /api/auth/* sensitive routes (login, register, password flows) */
+  AUTH_RATE_LIMIT_WINDOW_MS: num(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  AUTH_RATE_LIMIT_MAX: num(process.env.AUTH_RATE_LIMIT_MAX, 50),
+
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
 

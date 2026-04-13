@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 const BaseModel = require('./BaseModel');
+const { bindJsonDocument } = require('../utils/portfolioImages');
 
 const TABLE = 'offers';
 const COLUMNS = [
@@ -7,6 +8,26 @@ const COLUMNS = [
   'deposit_amount', 'deposit_percentage', 'conditions', 'valid_until', 'status', 'installment_requested',
   'installment_count', 'installment_status', 'created_at', 'updated_date',
 ];
+
+const OFFER_STATUS_ALLOWED = new Set([
+  'draft',
+  'sent_to_admin',
+  'sent_to_client',
+  'accepted',
+  'rejected',
+  'expired',
+]);
+
+function normalizeOfferStatus(status) {
+  if (status === undefined) return undefined;
+  const s = String(status || '').trim();
+  if (!s) return undefined;
+  if (OFFER_STATUS_ALLOWED.has(s)) return s;
+  // Backward compatibility for legacy frontend labels.
+  if (s === 'draft_for_provider') return 'draft';
+  if (s === 'sent') return 'sent_to_client';
+  return 'draft';
+}
 
 class Offer extends BaseModel {
   constructor(body = {}) {
@@ -16,13 +37,13 @@ class Offer extends BaseModel {
     this.provider_id = body?.provider_id;
     this.title = body?.title;
     this.description = body?.description;
-    this.items = body?.items;
+    this.items = bindJsonDocument(body?.items);
     this.total_amount = body?.total_amount;
     this.deposit_amount = body?.deposit_amount;
     this.deposit_percentage = body?.deposit_percentage;
     this.conditions = body?.conditions;
     this.valid_until = body?.valid_until;
-    this.status = body?.status;
+    this.status = normalizeOfferStatus(body?.status);
     this.installment_requested = body?.installment_requested;
     this.installment_count = body?.installment_count;
     this.installment_status = body?.installment_status;

@@ -1,7 +1,9 @@
 /* eslint-disable prettier/prettier */
 const { executeSQL } = require('../db/db');
+const { sanitizeFilters, resolveSortColumn } = require('../utils/sqlQueryGuards');
 
 const TABLE = 'favorites';
+const FAVORITE_COLUMNS = ['client_id', 'provider_id', 'created_at'];
 
 /**
  * Favorites use composite PK (client_id, provider_id). id param can be "clientId_providerId".
@@ -21,17 +23,15 @@ class Favorite {
   }
 
   async findAll({ filters = {}, sort = 'created_at', order = 'DESC', limit = 100, offset = 0 } = {}) {
+    const cleanFilters = sanitizeFilters(filters, FAVORITE_COLUMNS);
     const conditions = [];
     const values = [];
-    for (const [key, val] of Object.entries(filters)) {
-      if (val !== undefined && val !== null) {
-        conditions.push(`\`${key}\` = ?`);
-        values.push(val);
-      }
+    for (const [key, val] of Object.entries(cleanFilters)) {
+      conditions.push(`\`${key}\` = ?`);
+      values.push(val);
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const sortCol = sort.startsWith('-') ? sort.slice(1) : sort;
-    const sortDir = sort.startsWith('-') ? 'DESC' : order || 'ASC';
+    const { sortCol, sortDir } = resolveSortColumn(sort, order, FAVORITE_COLUMNS);
     // Use literal LIMIT/OFFSET integers — prepared LIMIT ? OFFSET ? can trigger
     // ER_WRONG_ARGUMENTS / "Incorrect arguments to mysqld_stmt_execute" on some MySQL/Percona builds.
     const safeLimit = Math.max(0, Math.floor(Number(limit) || 100));
