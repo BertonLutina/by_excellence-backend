@@ -2,6 +2,8 @@ const Payment = require('../models/Payment');
 const ServiceRequest = require('../models/ServiceRequest');
 const { sendMail } = require('../utils/mailer');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
+const { getPaymentWindowStatus } = require('../utils/paymentWindow');
+const User = require('../models/User');
 
 /**
  * @param {{ days_before?: number, days_after?: number }} body
@@ -56,6 +58,71 @@ async function sendPaymentReminders(body = {}) {
       }
 
       if (!dueDate) continue;
+
+      // Email J-30 : fenêtre de paiement final maintenant disponible
+      if (payment.type === 'final') {
+        const eventDate = request.confirmed_date || request.preferred_date;
+        const windowStatus = getPaymentWindowStatus(eventDate ? new Date(eventDate) : null);
+
+        if (windowStatus.status === 'open' && windowStatus.daysUntilEvent <= 30 && windowStatus.daysUntilEvent >= 28) {
+          // Just entered the window (around J-30): notify client
+          await sendMail({
+            to: request.client_email,
+            subject: 'Votre paiement final est maintenant disponible — By Excellence',
+            html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #3d4263; padding: 24px; text-align: center;">
+                <h1 style="color: #d4a848; margin: 0; font-size: 24px;">By Excellence</h1>
+              </div>
+              <div style="padding: 30px; background: #ffffff; line-height: 1.7; color: #333; font-size: 15px;">
+                <p>Bonjour <strong>${request.client_name || ''}</strong>,</p>
+                <p>La fenêtre de paiement final pour votre prestation avec <strong>${request.provider_name || ''}</strong> est maintenant ouverte.</p>
+                <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                  <p style="margin: 0; color: #15803d; font-weight: bold;">✅ Paiement final disponible</p>
+                  <p style="margin: 4px 0 0; color: #555;"><strong>Montant :</strong> ${payment.amount}€</p>
+                  <p style="margin: 4px 0 0; color: #555;"><strong>Date limite :</strong> ${windowStatus.dueDate ? new Date(windowStatus.dueDate).toLocaleDateString('fr-FR') : 'J-7 avant l\'événement'}</p>
+                </div>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${appBase}/#/clientrequestdetail?id=${request.id}" style="background: #d4a848; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Effectuer le paiement final</a>
+                </div>
+              </div>
+            </div>`,
+          }).catch(() => {});
+          results.push({ request_id: requestId, payment_id: payment.id, type: 'window_open_email', sent: true });
+          remindersSent++;
+          continue;
+        }
+
+        // Admin alert if J-7 has passed and payment is still pending
+        if (windowStatus.status === 'overdue') {
+          const adminUsers = await User.findAll({ role: 'admin' });
+          for (const adminUser of adminUsers) {
+            if (!adminUser.email) continue;
+            await sendMail({
+              to: adminUser.email,
+              subject: '🚨 Alerte : paiement final en retard — By Excellence',
+              html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: #dc2626; padding: 24px; text-align: center;">
+                  <h1 style="color: white; margin: 0; font-size: 24px;">🚨 Alerte By Excellence</h1>
+                </div>
+                <div style="padding: 30px; background: #ffffff; line-height: 1.7; color: #333; font-size: 15px;">
+                  <p>Le paiement final de la demande <strong>#${request.id}</strong> est en retard (deadline J-7 dépassée).</p>
+                  <div style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 0; color: #dc2626; font-weight: bold;">Détails :</p>
+                    <p style="margin: 4px 0 0; color: #555;"><strong>Client :</strong> ${request.client_name} (${request.client_email})</p>
+                    <p style="margin: 4px 0 0; color: #555;"><strong>Prestataire :</strong> ${request.provider_name || 'N/A'}</p>
+                    <p style="margin: 4px 0 0; color: #555;"><strong>Montant :</strong> ${payment.amount}€</p>
+                    <p style="margin: 4px 0 0; color: #555;"><strong>Date événement :</strong> ${request.confirmed_date || request.preferred_date}</p>
+                  </div>
+                  <p>Action requise : contacter le client ou annuler la mission.</p>
+                </div>
+              </div>`,
+            }).catch(() => {});
+          }
+          results.push({ request_id: requestId, payment_id: payment.id, type: 'admin_overdue_alert', sent: adminUsers.length > 0 });
+          remindersSent++;
+          continue;
+        }
+      }
 
       const diffDays = Math.round((dueDate - now) / (1000 * 60 * 60 * 24));
       let reminderType = null;
