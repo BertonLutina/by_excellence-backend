@@ -28,7 +28,7 @@ const update = async (req, res) => {
   }
 };
 
-const getOverdueFinals = async (req, res) => {
+const getOverdueFinals = async (_req, res) => {
   try {
     const finals = await Payment.findAll({ filters: { type: 'final', status: 'pending' }, limit: 200 });
     const overdue = [];
