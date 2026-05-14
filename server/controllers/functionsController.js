@@ -15,6 +15,7 @@ const {
   validateStripeAmount,
   assertPaymentOrderForCheckout,
 } = require('../services/stripePaymentGuards');
+const { getPaymentWindowStatus } = require('../utils/paymentWindow');
 
 function clientBaseUrl(req) {
   const h = req.headers.referer || req.headers.origin;
@@ -82,6 +83,26 @@ exports.invoke = async (req, res) => {
 
         const request = await ServiceRequest.findById(payment.request_id);
         if (!request) return res.status(404).json({ error: 'Request not found' });
+
+        // Enforce payment window: final payment only allowed between J-30 and J-7
+        if (payment.type === 'final') {
+          const eventDate = request.confirmed_date || request.preferred_date;
+          const windowStatus = getPaymentWindowStatus(eventDate ? new Date(eventDate) : null);
+          if (windowStatus.status === 'not_yet') {
+            return res.status(400).json({
+              error: `Le paiement final n'est pas encore disponible. Il sera accessible dans ${windowStatus.daysUntilOpen} jour(s).`,
+              code: 'PAYMENT_WINDOW_NOT_YET',
+              daysUntilOpen: windowStatus.daysUntilOpen,
+            });
+          }
+          if (windowStatus.status === 'overdue') {
+            return res.status(400).json({
+              error: "La date limite de paiement final est dépassée (J-7 avant l'événement). Contactez l'administrateur.",
+              code: 'PAYMENT_WINDOW_OVERDUE',
+            });
+          }
+          // 'no_date' and 'open' → allow payment
+        }
 
         const amountErr = validateStripeAmount(payment);
         if (amountErr) return res.status(400).json({ error: amountErr });

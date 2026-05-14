@@ -7,7 +7,7 @@ const TABLE = 'payments';
 const COLUMNS = [
   'id', 'request_id', 'offer_id', 'type', 'installment_index', 'installment_total',
   'amount', 'commission_rate_percent', 'admin_commission_amount', 'provider_net_amount',
-  'status', 'paid_date', 'payment_method', 'invoice_url', 'created_at', 'updated_date',
+  'status', 'paid_date', 'due_date', 'payment_method', 'invoice_url', 'created_at', 'updated_date',
 ];
 
 class Payment extends BaseModel {
@@ -25,6 +25,7 @@ class Payment extends BaseModel {
     this.provider_net_amount = body?.provider_net_amount;
     this.status = body?.status;
     this.paid_date = body?.paid_date;
+    this.due_date = body?.due_date;
     this.payment_method = body?.payment_method;
     this.invoice_url = body?.invoice_url;
     this.created_at = body?.created_at;

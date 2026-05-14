@@ -2,6 +2,7 @@ const Payment = require('../models/Payment');
 const ServiceRequest = require('../models/ServiceRequest');
 const Offer = require('../models/Offer');
 const paymentCommissionService = require('./paymentCommissionService');
+const { computeFinalPaymentDueDate } = require('../utils/paymentWindow');
 
 function mysqlDateTime(iso) {
   if (!iso) return new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -64,12 +65,19 @@ async function ensureFinalPaymentAfterDeposit(payment) {
   const finalAmount = Number(offer.total_amount || 0) - Number(offer.deposit_amount || 0);
   if (!(finalAmount > 0)) return;
 
+  const request = await ServiceRequest.findById(payment.request_id);
+  const eventDate = request ? (request.confirmed_date || request.preferred_date) : null;
+  const due_date = eventDate
+    ? computeFinalPaymentDueDate(new Date(eventDate)).toISOString().slice(0, 19).replace('T', ' ')
+    : null;
+
   await Payment.create({
     request_id: payment.request_id,
     offer_id: payment.offer_id,
     type: 'final',
     amount: finalAmount,
     status: 'pending',
+    due_date,
   });
 }
 
