@@ -1,6 +1,8 @@
 const createEntityController = require('./createEntityController');
 const Payment = require('../models/Payment');
 const paymentCommissionService = require('../services/paymentCommissionService');
+const { getPaymentWindowStatus } = require('../utils/paymentWindow');
+const ServiceRequest = require('../models/ServiceRequest');
 
 const base = createEntityController(Payment, 'Payment');
 
@@ -26,4 +28,23 @@ const update = async (req, res) => {
   }
 };
 
-module.exports = { ...base, update };
+const getOverdueFinals = async (req, res) => {
+  try {
+    const finals = await Payment.findAll({ filters: { type: 'final', status: 'pending' }, limit: 200 });
+    const overdue = [];
+    for (const p of finals) {
+      const request = await ServiceRequest.findById(p.request_id);
+      if (!request) continue;
+      const eventDate = request.confirmed_date || request.preferred_date;
+      const ws = getPaymentWindowStatus(eventDate ? new Date(eventDate) : null);
+      if (ws.status === 'overdue') {
+        overdue.push({ payment: p, request, windowStatus: ws });
+      }
+    }
+    return res.json(overdue);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { ...base, update, getOverdueFinals };
