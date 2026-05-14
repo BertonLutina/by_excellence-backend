@@ -1,4 +1,47 @@
 const ServiceItem = require('../models/ServiceItem');
+const { getStripe } = require('../utils/stripeClient');
+
+async function syncStripeProduct(item) {
+  const stripe = getStripe();
+  if (!stripe || !item.title || !(Number(item.price) > 0)) return {};
+
+  const priceInCents = Math.round(Number(item.price) * 100);
+
+  let stripeProductId = item.stripe_product_id;
+  let stripePriceId = item.stripe_price_id;
+
+  if (!stripeProductId) {
+    const product = await stripe.products.create({
+      name: item.title,
+      description: item.description || undefined,
+      metadata: { service_item_id: String(item.id || '') },
+    });
+    stripeProductId = product.id;
+  } else {
+    await stripe.products.update(stripeProductId, {
+      name: item.title,
+      description: item.description || '',
+    }).catch(() => {});
+  }
+
+  const currentPrice = stripePriceId
+    ? await stripe.prices.retrieve(stripePriceId).catch(() => null)
+    : null;
+
+  if (!currentPrice || currentPrice.unit_amount !== priceInCents) {
+    if (stripePriceId) {
+      await stripe.prices.update(stripePriceId, { active: false }).catch(() => {});
+    }
+    const price = await stripe.prices.create({
+      product: stripeProductId,
+      unit_amount: priceInCents,
+      currency: 'eur',
+    });
+    stripePriceId = price.id;
+  }
+
+  return { stripe_product_id: stripeProductId, stripe_price_id: stripePriceId };
+}
 
 function parseIncludes(raw) {
   if (Array.isArray(raw)) return raw.filter((x) => String(x || '').trim() !== '');
@@ -77,8 +120,15 @@ module.exports = {
   create: async (req, res) => {
     try {
       const payload = toModelPayload(req.body, req);
-      console.log(payload);
       const row = await ServiceItem.create(payload);
+
+      // Sync to Stripe after creation (non-blocking on failure)
+      const stripeIds = await syncStripeProduct(row).catch(() => ({}));
+      if (stripeIds.stripe_product_id) {
+        await ServiceItem.update(row.id, stripeIds).catch(() => {});
+        Object.assign(row, stripeIds);
+      }
+
       return res.status(201).json(serialize(row));
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -90,6 +140,14 @@ module.exports = {
       const payload = toModelPayload(req.body, req);
       const row = await ServiceItem.update(req.params.id, payload);
       if (!row) return res.status(404).json({ error: 'Not found' });
+
+      // Sync to Stripe after update (non-blocking on failure)
+      const stripeIds = await syncStripeProduct(row).catch(() => ({}));
+      if (stripeIds.stripe_product_id) {
+        await ServiceItem.update(row.id, stripeIds).catch(() => {});
+        Object.assign(row, stripeIds);
+      }
+
       return res.json(serialize(row));
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -98,6 +156,13 @@ module.exports = {
 
   remove: async (req, res) => {
     try {
+      const existing = await ServiceItem.findById(req.params.id);
+      if (existing?.stripe_product_id) {
+        const stripe = getStripe();
+        if (stripe) {
+          await stripe.products.update(existing.stripe_product_id, { active: false }).catch(() => {});
+        }
+      }
       await ServiceItem.delete(req.params.id);
       return res.json({ success: true, id: req.params.id });
     } catch (err) {

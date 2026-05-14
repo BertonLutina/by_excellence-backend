@@ -5,7 +5,8 @@ const { bindJsonDocument } = require('../utils/portfolioImages');
 const TABLE = 'service_items';
 const COLUMNS = [
   'id', 'provider_id', 'title', 'description', 'price', 'price_type', 'duration',
-  'order', 'is_active', 'includes', 'image_url', 'created_date', 'updated_date', 'created_by',
+  'order', 'is_active', 'includes', 'image_url', 'stripe_product_id', 'stripe_price_id',
+  'created_date', 'updated_date', 'created_by',
 ];
 
 class ServiceItem extends BaseModel {
@@ -22,6 +23,8 @@ class ServiceItem extends BaseModel {
     this.is_active = body?.is_active ?? 1;
     this.includes = bindJsonDocument(body?.includes ?? []);
     this.image_url = body?.image_url;
+    this.stripe_product_id = body?.stripe_product_id || null;
+    this.stripe_price_id = body?.stripe_price_id || null;
     this.created_date = body?.created_date ;
     this.updated_date = body?.updated_date ;
     this.created_by = body?.created_by || null;
