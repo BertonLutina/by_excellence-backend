@@ -17,7 +17,7 @@ test('status open when now is between J-30 and J-7', () => {
   event.setDate(event.getDate() + 15);
   const s = getPaymentWindowStatus(event);
   assert.equal(s.status, 'open');
-  assert.ok(s.daysUntilEvent >= 14);
+  assert.equal(s.daysUntilEvent, 15);
 });
 
 test('status not_yet when now is before J-30', () => {
@@ -38,4 +38,25 @@ test('status overdue when now is past J-7', () => {
 test('status no_date when event date is null', () => {
   const s = getPaymentWindowStatus(null);
   assert.equal(s.status, 'no_date');
+});
+
+test('status open at exactly J-30 (window opens that day)', () => {
+  const event = new Date();
+  event.setDate(event.getDate() + 30);
+  const s = getPaymentWindowStatus(event);
+  assert.equal(s.status, 'open');
+});
+
+test('status open at exactly J-7 (last valid payment day)', () => {
+  const event = new Date();
+  event.setDate(event.getDate() + 7);
+  const s = getPaymentWindowStatus(event);
+  assert.equal(s.status, 'open');
+});
+
+test('status overdue at J-0 (event day itself)', () => {
+  const event = new Date();
+  event.setHours(23, 59, 59, 0);
+  const s = getPaymentWindowStatus(event);
+  assert.equal(s.status, 'overdue');
 });

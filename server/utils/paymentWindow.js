@@ -9,11 +9,11 @@ function computeFinalPaymentDueDate(eventDate) {
 }
 
 function getPaymentWindowStatus(eventDate) {
-  if (!eventDate) return { status: 'no_date', daysUntilEvent: null };
+  if (!eventDate) return { status: 'no_date', daysUntilEvent: null, dueDate: null };
   const now = new Date();
   const event = new Date(eventDate);
   const msPerDay = 1000 * 60 * 60 * 24;
-  const daysUntilEvent = Math.ceil((event - now) / msPerDay);
+  const daysUntilEvent = Math.floor((event - now) / msPerDay);
   const dueDate = computeFinalPaymentDueDate(event);
 
   if (daysUntilEvent > WINDOW_OPEN_DAYS) {
@@ -22,6 +22,7 @@ function getPaymentWindowStatus(eventDate) {
   if (daysUntilEvent <= 0) {
     return { status: 'overdue', daysUntilEvent, dueDate };
   }
+  // J-7 is the last valid day (due_date is set to 23:59:59 that day), so < not <=
   if (daysUntilEvent < WINDOW_CLOSE_DAYS) {
     return { status: 'overdue', daysUntilEvent, dueDate };
   }
