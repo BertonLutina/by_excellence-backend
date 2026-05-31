@@ -3,6 +3,9 @@ const ServiceRequest = require('../models/ServiceRequest');
 const Offer = require('../models/Offer');
 const paymentCommissionService = require('./paymentCommissionService');
 const { computeFinalPaymentDueDate } = require('../utils/paymentWindow');
+const { buildInvoiceDataUrl } = require('./invoicePdfService');
+const { uploadBuffer } = require('./objectStorage');
+const constants = require('../../constants/constant');
 
 function mysqlDateTime(iso) {
   if (!iso) return new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -115,6 +118,23 @@ async function markPaymentPaid(paymentId, options = {}) {
   if (fresh.type === 'deposit') {
     await ensureFinalPaymentAfterDeposit(fresh);
   }
+
+  // Auto-generate and store invoice PDF URL (non-blocking)
+  (async () => {
+    try {
+      const offer = fresh.offer_id ? await Offer.findById(fresh.offer_id) : null;
+      const dataUrl = await buildInvoiceDataUrl(fresh, request, offer);
+      const base64 = dataUrl.replace(/^data:application\/pdf;base64,/, '');
+      const buffer = Buffer.from(base64, 'base64');
+      const { publicUrl } = await uploadBuffer(
+        { buffer, mime: 'application/pdf', ext: '.pdf', entity: 'invoice' },
+        constants
+      );
+      await Payment.update(paymentId, { invoice_url: publicUrl });
+    } catch (e) {
+      console.warn('[invoice] auto-save failed:', e.message);
+    }
+  })();
 
   return { ok: true, payment: fresh, request };
 }

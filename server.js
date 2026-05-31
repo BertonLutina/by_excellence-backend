@@ -128,7 +128,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Dat
 
 app.use(express.static(path.join(__dirname, 'build')));
 
-app.get('/', (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
@@ -148,7 +148,36 @@ process.on('uncaughtException', (err) => {
   trace(`uncaughtException: ${err && err.stack ? err.stack : String(err)}`);
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  trace(`listening on ${PORT}`);
-  if (!quietLogs) console.log(`[API] By Excellence backend running on port ${PORT}`);
-});
+const { runStartupTasks } = require('./server/services/startupService');
+
+runStartupTasks()
+  .catch((e) => trace(`[startup] error: ${e.message}`))
+  .finally(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      trace(`listening on ${PORT}`);
+      if (!quietLogs) console.log(`[API] By Excellence backend running on port ${PORT}`);
+    });
+  });
+
+// Nightly payment reminder cron — runs every day at 02:00 server time
+(function schedulePaymentReminders() {
+  const { sendPaymentReminders } = require('./server/services/paymentRemindersService');
+
+  function msUntil2am() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(2, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next.getTime() - now.getTime();
+  }
+
+  function runAndReschedule() {
+    sendPaymentReminders()
+      .then((r) => trace(`[cron] payment reminders: ${JSON.stringify(r)}`))
+      .catch((e) => trace(`[cron] payment reminders error: ${e.message}`));
+    setTimeout(runAndReschedule, 24 * 60 * 60 * 1000);
+  }
+
+  setTimeout(runAndReschedule, msUntil2am());
+  trace(`[cron] payment reminders scheduled — first run in ${Math.round(msUntil2am() / 60000)} min`);
+}());

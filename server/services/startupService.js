@@ -51,9 +51,56 @@ async function ensureStripeWebhook() {
   }
 }
 
+async function geocodeProviders() {
+  const https = require('https');
+  const rows = await executeSQL(
+    `SELECT id, city FROM providers WHERE city IS NOT NULL AND city != '' AND (lat IS NULL OR lng IS NULL) LIMIT 200`
+  );
+  if (!rows?.length) return;
+  console.log(`[startup] geocoding ${rows.length} provider(s) missing coords…`);
+
+  function nominatim(city) {
+    return new Promise((resolve) => {
+      const url = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&format=json&limit=10&addressdetails=1&countrycodes=be,fr,nl,de,ch,lu,gb,it,es,pt`;
+      https.get(url, { headers: { 'User-Agent': 'ByExcellence/1.0 (contact@by-excellence.com)' } }, (res) => {
+        let body = '';
+        res.on('data', (d) => body += d);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            const PLACE = new Set(['city','town','village','municipality','administrative']);
+            const hit =
+              data.find((r) => r.class === 'place' && PLACE.has(r.type)) ||
+              data.find((r) => r.class === 'boundary' && r.type === 'administrative') ||
+              data[0];
+            resolve(hit ? { lat: parseFloat(hit.lat), lng: parseFloat(hit.lon) } : null);
+          } catch { resolve(null); }
+        });
+      }).on('error', () => resolve(null));
+    });
+  }
+
+  for (const row of rows) {
+    try {
+      const coords = await nominatim(row.city);
+      if (coords) {
+        await executeSQL('UPDATE providers SET lat=?, lng=? WHERE id=?', [coords.lat, coords.lng, row.id]);
+        console.log(`[startup] geocoded provider #${row.id} (${row.city}) → ${coords.lat}, ${coords.lng}`);
+      }
+      // Nominatim rate limit: 1 req/sec
+      await new Promise((r) => setTimeout(r, 1100));
+    } catch (e) {
+      console.warn(`[startup] geocode failed for provider #${row.id}:`, e.message);
+    }
+  }
+  console.log('[startup] geocoding done');
+}
+
 async function runStartupTasks() {
   await runMigrations();
   await ensureStripeWebhook();
+  // Non-blocking — runs in background after server is up
+  geocodeProviders().catch((e) => console.warn('[startup] geocodeProviders error:', e.message));
 }
 
 module.exports = { runStartupTasks };

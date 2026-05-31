@@ -22,12 +22,29 @@ function ensureStatus(status) {
 
 async function listClients(query) {
   const { limit, offset } = parsePagination(query);
-  const rows = await Client.findAll({ sort: '-id', limit, offset });
-  return rows;
+  const rows = await executeSQL(
+    `SELECT c.id, c.user_id, c.full_name, c.phone, c.status, c.created_at, c.updated_date,
+            u.email, u.is_email_verified
+     FROM clients c
+     LEFT JOIN users u ON u.id = c.user_id
+     ORDER BY c.id DESC
+     LIMIT ? OFFSET ?`,
+    [limit, offset]
+  );
+  return Array.isArray(rows) ? rows : [];
 }
 
 async function getClientById(id) {
-  return Client.findById(id);
+  const rows = await executeSQL(
+    `SELECT c.id, c.user_id, c.full_name, c.phone, c.status, c.created_at, c.updated_date,
+            u.email, u.is_email_verified
+     FROM clients c
+     LEFT JOIN users u ON u.id = c.user_id
+     WHERE c.id = ?`,
+    [id]
+  );
+  const arr = Array.isArray(rows) ? rows : [];
+  return arr[0] || null;
 }
 
 async function updateClientStatus(id, status) {
@@ -49,13 +66,27 @@ async function getClientDemandes(clientId) {
 
 async function listProviders(query) {
   const { limit, offset } = parsePagination(query);
-  const rows = await Provider.findAll({ sort: '-id', limit, offset });
-  return serializeProviderRows(rows);
+  const rows = await executeSQL(
+    `SELECT p.*, u.email, u.is_email_verified
+     FROM providers p
+     LEFT JOIN users u ON u.id = p.user_id
+     ORDER BY p.id DESC
+     LIMIT ? OFFSET ?`,
+    [limit, offset]
+  );
+  return serializeProviderRows(Array.isArray(rows) ? rows : []);
 }
 
 async function getProviderById(id) {
-  const row = await Provider.findById(id);
-  return row ? serializeProviderRow(row) : null;
+  const rows = await executeSQL(
+    `SELECT p.*, u.email, u.is_email_verified
+     FROM providers p
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE p.id = ?`,
+    [id]
+  );
+  const arr = Array.isArray(rows) ? rows : [];
+  return arr[0] ? serializeProviderRow(arr[0]) : null;
 }
 
 async function updateProviderStatus(id, status) {
@@ -67,8 +98,16 @@ async function updateProviderStatus(id, status) {
 
 async function listAdmins(query) {
   const { limit, offset } = parsePagination(query);
-  const rows = await Admin.findAll({ sort: '-id', limit, offset });
-  return rows;
+  const rows = await executeSQL(
+    `SELECT a.id, a.user_id, a.full_name, a.status, a.created_at, a.updated_date,
+            u.email, u.is_email_verified
+     FROM admins a
+     LEFT JOIN users u ON u.id = a.user_id
+     ORDER BY a.id DESC
+     LIMIT ? OFFSET ?`,
+    [limit, offset]
+  );
+  return Array.isArray(rows) ? rows : [];
 }
 
 async function updateAdminStatus(id, status) {
