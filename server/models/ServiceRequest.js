@@ -14,7 +14,9 @@ const COLUMNS = [
   'provider_name',
   'service_description',
   'is_combo',
+  'is_open_request',
   'combo_payload',
+  'selected_items',
   'preferred_date',
   'budget',
   'status',
@@ -40,6 +42,11 @@ class ServiceRequest extends BaseModel {
     } else {
       this.is_combo = body?.is_combo;
     }
+    if (body && Object.prototype.hasOwnProperty.call(body, 'is_open_request')) {
+      this.is_open_request = Boolean(body.is_open_request);
+    } else if (body?.is_open_request != null) {
+      this.is_open_request = Boolean(body.is_open_request);
+    }
     if (body && Object.prototype.hasOwnProperty.call(body, 'combo_payload')) {
       const v = body.combo_payload;
       if (v === null) this.combo_payload = null;
@@ -48,6 +55,15 @@ class ServiceRequest extends BaseModel {
       else this.combo_payload = v;
     } else {
       this.combo_payload = body?.combo_payload;
+    }
+    if (body && Object.prototype.hasOwnProperty.call(body, 'selected_items')) {
+      const v = body.selected_items;
+      if (v === null) this.selected_items = null;
+      else if (v === undefined) this.selected_items = undefined;
+      else if (typeof v === 'object') this.selected_items = bindJsonDocument(v);
+      else this.selected_items = v;
+    } else {
+      this.selected_items = body?.selected_items;
     }
     this.preferred_date = body?.preferred_date;
     this.budget = body?.budget;

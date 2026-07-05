@@ -12,6 +12,8 @@ function serializeProviderRow(row) {
   }
   if (o.category_id != null && o.category_id !== '') o.category_id = Number(o.category_id);
   if (o.worker_count != null && o.worker_count !== '') o.worker_count = Number(o.worker_count);
+  if (o.lat != null && o.lat !== '') o.lat = Number(o.lat);
+  if (o.lng != null && o.lng !== '') o.lng = Number(o.lng);
   return o;
 }
 

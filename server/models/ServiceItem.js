@@ -4,7 +4,7 @@ const { bindJsonDocument } = require('../utils/portfolioImages');
 
 const TABLE = 'service_items';
 const COLUMNS = [
-  'id', 'provider_id', 'title', 'description', 'price', 'price_type', 'duration',
+  'id', 'provider_id', 'item_type', 'title', 'description', 'price', 'price_type', 'duration',
   'order', 'is_active', 'includes', 'image_url', 'stripe_product_id', 'stripe_price_id',
   'created_date', 'updated_date', 'created_by',
 ];
@@ -14,6 +14,7 @@ class ServiceItem extends BaseModel {
     super({}, TABLE, COLUMNS, { autoIncrement: true });
     this.id = body?.id;
     this.provider_id = body?.provider_id;
+    this.item_type = body?.item_type || 'package';
     this.title = body?.title;
     this.description = body?.description;
     this.price = body?.price;

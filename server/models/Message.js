@@ -3,7 +3,7 @@ const BaseModel = require('./BaseModel');
 
 const TABLE = 'messages';
 const COLUMNS = [
-  'id', 'request_id', 'sender_id', 'sender_role', 'content', 'is_read', 'created_at', 'updated_date',
+  'id', 'request_id', 'offer_id', 'sender_id', 'sender_role', 'content', 'is_read', 'created_at', 'updated_date',
 ];
 
 class Message extends BaseModel {
@@ -11,6 +11,7 @@ class Message extends BaseModel {
     super({}, TABLE, COLUMNS, { autoIncrement: true });
     this.id = body?.id;
     this.request_id = body?.request_id;
+    this.offer_id = body?.offer_id;
     this.sender_id = body?.sender_id;
     this.sender_role = body?.sender_role;
     this.content = body?.content;

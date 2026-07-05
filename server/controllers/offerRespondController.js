@@ -3,6 +3,7 @@ const ServiceRequest = require('../models/ServiceRequest');
 const Payment = require('../models/Payment');
 const { makeOfferActionToken } = require('../utils/offerActionToken');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
+const { notifyRequestStatusChange, notifyOfferStatusChange } = require('../services/notificationService');
 
 function page(title, bodyHtml) {
   return `<!DOCTYPE html>
@@ -61,6 +62,9 @@ exports.get = async (req, res) => {
       await Offer.update(offerId, { status: 'accepted' });
       await ServiceRequest.update(offer.request_id, { status: 'offer_accepted' });
 
+      notifyOfferStatusChange(offerId, 'accepted').catch(() => {});
+      notifyRequestStatusChange(offer.request_id, 'offer_accepted').catch(() => {});
+
       const existingDeposit = await Payment.findAll({
         filters: { request_id: offer.request_id, offer_id: offer.id, type: 'deposit' },
         limit: 5,
@@ -92,6 +96,9 @@ exports.get = async (req, res) => {
     if (action === 'reject') {
       await Offer.update(offerId, { status: 'rejected' });
       await ServiceRequest.update(offer.request_id, { status: 'in_review' });
+
+      notifyOfferStatusChange(offerId, 'rejected').catch(() => {});
+      notifyRequestStatusChange(offer.request_id, 'in_review').catch(() => {});
       return res
         .status(200)
         .type('html')

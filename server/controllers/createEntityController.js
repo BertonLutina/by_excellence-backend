@@ -18,6 +18,9 @@ function enrichCreateData(entityName, req, data) {
     case 'Favorite':
       if (out.client_id == null) out.client_id = user.id;
       break;
+    case 'PlatformReview':
+      if (out.author_user_id == null) out.author_user_id = user.id;
+      break;
     default:
       break;
   }

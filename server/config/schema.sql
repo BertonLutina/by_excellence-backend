@@ -131,6 +131,7 @@ CREATE TABLE providers (
     video_url TEXT,
     access TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=visible in webapp, 0=no access',
     status_verification TINYINT NOT NULL DEFAULT 0 COMMENT '0=nothing, 1=sent, 2=in treatment, 3=accepted, 4=refused',
+    stripe_account_id VARCHAR(255) NULL COMMENT 'Stripe Connect account id for provider payouts (acct_...)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -143,7 +144,8 @@ CREATE TABLE providers (
     INDEX idx_provider_rating (rating),
     INDEX idx_provider_tier (provider_tier),
     INDEX idx_provider_access (access),
-    INDEX idx_provider_status_verification (status_verification)
+    INDEX idx_provider_status_verification (status_verification),
+    INDEX idx_provider_stripe_account_id (stripe_account_id)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -167,6 +169,7 @@ CREATE TABLE provider_availability (
 CREATE TABLE service_items (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     provider_id BIGINT UNSIGNED NOT NULL,
+    item_type ENUM('service','package') NOT NULL DEFAULT 'package',
     title VARCHAR(255) NOT NULL,
     description TEXT,
     price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -176,11 +179,14 @@ CREATE TABLE service_items (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     includes JSON,
     image_url TEXT,
+    stripe_product_id VARCHAR(255) NULL,
+    stripe_price_id VARCHAR(255) NULL,
     created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_by BIGINT UNSIGNED NULL,
 
     INDEX idx_service_item_provider (provider_id),
+    INDEX idx_service_item_type (item_type),
     INDEX idx_service_item_active (is_active),
     INDEX idx_service_item_order (`order`),
     CONSTRAINT fk_service_item_provider FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,

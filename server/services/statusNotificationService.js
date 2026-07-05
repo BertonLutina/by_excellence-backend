@@ -5,14 +5,14 @@ const { sendMail } = require('../utils/mailer');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
 
 const STATUS_CONFIG = {
-  request_sent: { label: "Demande reçue", emoji: '📩', client: true, provider: true, admin: false },
-  in_review: { label: "Demande en cours d'examen", emoji: '🔍', client: true, provider: false, admin: false },
-  offer_preparation: { label: 'Offre en préparation', emoji: '✍️', client: true, provider: true, admin: false },
-  offer_sent: { label: 'Offre envoyée', emoji: '📨', client: true, provider: false, admin: false },
+  request_sent: { label: "Demande reçue", emoji: '📩', client: true, provider: true, admin: true },
+  in_review: { label: "Demande en cours d'examen", emoji: '🔍', client: true, provider: false, admin: true },
+  offer_preparation: { label: 'Offre en préparation', emoji: '✍️', client: true, provider: true, admin: true },
+  offer_sent: { label: 'Offre envoyée', emoji: '📨', client: true, provider: false, admin: true },
   offer_accepted: { label: 'Offre acceptée par le client', emoji: '✅', client: true, provider: true, admin: true },
   deposit_paid: { label: 'Acompte reçu', emoji: '💳', client: true, provider: true, admin: true },
-  date_confirmed: { label: 'Date de prestation confirmée', emoji: '📅', client: true, provider: true, admin: false },
-  final_payment_pending: { label: 'Solde final à régler', emoji: '⏳', client: true, provider: false, admin: false },
+  date_confirmed: { label: 'Date de prestation confirmée', emoji: '📅', client: true, provider: true, admin: true },
+  final_payment_pending: { label: 'Solde final à régler', emoji: '⏳', client: true, provider: false, admin: true },
   completed: { label: 'Prestation terminée', emoji: '🎉', client: true, provider: true, admin: true },
   cancelled: { label: 'Demande annulée', emoji: '❌', client: true, provider: true, admin: true },
 };

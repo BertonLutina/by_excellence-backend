@@ -12,8 +12,22 @@ const {
   normalizeProviderId,
   deriveIsCombo,
   validateComboForCreate,
+  normalizeComboPayload,
 } = require('../utils/serviceRequestCombo');
+const {
+  validateAndNormalizeSelectedItems,
+  buildDescriptionFromSelectedItems,
+} = require('../utils/serviceRequestSelectedItems');
 const { serializeServiceRequestRow, serializeServiceRequestRows } = require('../utils/serializeServiceRequest');
+const {
+  notifyRequestStatusChange,
+  notifyComboRequestCreated,
+} = require('../services/notificationService');
+const {
+  listCollaboratorsForRequest,
+  syncCollaboratorsFromCombo,
+  listRequestIdsForProvider,
+} = require('../services/serviceRequestCollaborationService');
 
 const SERVICE_REQUEST_STATUSES = new Set([
   'request_sent',
@@ -27,6 +41,12 @@ const SERVICE_REQUEST_STATUSES = new Set([
   'completed',
   'cancelled',
 ]);
+
+const { resolveSortColumn } = require('../utils/sqlQueryGuards');
+
+const REQUEST_SORT_COLUMNS = [
+  'id', 'client_id', 'provider_id', 'status', 'created_at', 'updated_date', 'preferred_date',
+];
 
 const base = createEntityController(ServiceRequest, 'ServiceRequest');
 
@@ -109,7 +129,7 @@ const getOne = async (req, res) => {
     } else {
       client_email = row.client_email ?? null;
     }
-    res.json(serializeServiceRequestRow({ ...row, client_email }));
+    res.json(serializeServiceRequestRow({ ...row, client_email, collaborators: await listCollaboratorsForRequest(row.id) }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -126,9 +146,27 @@ function normalizeServiceRequestSort(sort) {
 /** Enrich getAll with client_email per row. */
 const getAll = async (req, res) => {
   try {
-    const { sort: rawSort, limit, offset, ...filters } = req.query;
+    const { sort: rawSort, limit, offset, provider_id: providerIdFilter, ...filters } = req.query;
     const sort = normalizeServiceRequestSort(rawSort);
-    const rows = await ServiceRequest.findAll({ filters, sort, limit, offset });
+
+    let rows;
+    const pid = normalizeProviderId(providerIdFilter);
+    if (pid) {
+      const ids = await listRequestIdsForProvider(pid);
+      if (!ids.length) return res.json([]);
+      const placeholders = ids.map(() => '?').join(',');
+      const { sortCol, sortDir } = resolveSortColumn(sort, 'DESC', REQUEST_SORT_COLUMNS);
+      const safeLimit = Number(limit) || 100;
+      const safeOffset = Number(offset) || 0;
+      rows = await executeSQL(
+        `SELECT * FROM service_requests WHERE id IN (${placeholders})
+         ORDER BY \`${sortCol}\` ${sortDir} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+        ids
+      );
+    } else {
+      rows = await ServiceRequest.findAll({ filters, sort, limit, offset });
+    }
+
     if (rows.length === 0) return res.json([]);
     const withEmail = await Promise.all(
       rows.map(async (r) => {
@@ -138,7 +176,8 @@ const getAll = async (req, res) => {
           const userRows = Array.isArray(userResult) ? userResult : userResult ? [userResult] : [];
           client_email = userRows[0]?.email ?? client_email;
         }
-        return serializeServiceRequestRow({ ...r, client_email });
+        const collaborators = await listCollaboratorsForRequest(r.id);
+        return serializeServiceRequestRow({ ...r, client_email, collaborators });
       })
     );
     res.json(withEmail);
@@ -164,21 +203,69 @@ const create = async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const locale = pickLocale(req, body);
-    const provider_id = normalizeProviderId(body.provider_id);
-    if (!provider_id) {
+    const isOpenRequest = body.is_open_request === true || body.is_open_request === 'true';
+
+    let provider_id = normalizeProviderId(body.provider_id);
+    if (isOpenRequest) {
+      provider_id = null;
+    } else if (!provider_id) {
       return res.status(400).json({ error: 'provider_id is required' });
     }
-    const desc = body.service_description;
+
+    const { items: selectedItems, error: itemsErr } = await validateAndNormalizeSelectedItems(
+      provider_id,
+      body.selected_items
+    );
+    if (itemsErr) {
+      return res.status(400).json({ error: itemsErr });
+    }
+
+    if (isOpenRequest && selectedItems.length > 0) {
+      return res.status(400).json({ error: 'Open requests cannot include selected_items' });
+    }
+
+    let combo_payload = parseComboPayloadBody(body.combo_payload);
+    if (combo_payload === 'INVALID_JSON') {
+      return res.status(400).json({ error: 'combo_payload must be valid JSON' });
+    }
+
+    const is_combo = isOpenRequest ? false : deriveIsCombo({ ...body, service_description: body.service_description });
+    if (is_combo && selectedItems.length > 0) {
+      return res.status(400).json({ error: 'Cannot combine combo request with selected_items basket' });
+    }
+    if (isOpenRequest && (is_combo || body.is_combo === true || body.is_combo === 'true')) {
+      return res.status(400).json({ error: 'Open requests cannot be combo requests' });
+    }
+
+    if (is_combo && combo_payload) {
+      combo_payload = normalizeComboPayload(combo_payload, provider_id);
+      if (!combo_payload) {
+        return res.status(400).json({ error: 'Invalid combo_payload: at least 2 providers required' });
+      }
+    }
+
+    let desc = body.service_description;
+    const descTrim = desc != null ? String(desc).trim() : '';
+    const userNotes = descTrim;
+
+    if (selectedItems.length > 0 && !descTrim) {
+      desc = buildDescriptionFromSelectedItems(selectedItems, '');
+    } else if (selectedItems.length > 0 && descTrim) {
+      desc = buildDescriptionFromSelectedItems(selectedItems, userNotes);
+    }
+
     if (desc === undefined || desc === null || String(desc).trim() === '') {
       return res.status(400).json({ error: 'service_description is required' });
     }
 
-    const provRows = await executeSQL('SELECT id, display_name FROM providers WHERE id = ?', [provider_id]);
+    const provRows = provider_id
+      ? await executeSQL('SELECT id, display_name FROM providers WHERE id = ?', [provider_id])
+      : [];
     const plist = Array.isArray(provRows) ? provRows : provRows ? [provRows] : [];
-    if (plist.length === 0) {
+    if (provider_id && plist.length === 0) {
       return res.status(400).json({ error: 'Invalid provider_id: provider not found' });
     }
-    const primaryDisplay = plist[0].display_name;
+    const primaryDisplay = plist[0]?.display_name;
 
     let client_id = null;
     let client_name = body.client_name != null ? String(body.client_name).trim() : null;
@@ -216,28 +303,29 @@ const create = async (req, res) => {
       return res.status(400).json({ error: `Invalid status` });
     }
 
-    let combo_payload = parseComboPayloadBody(body.combo_payload);
-    if (combo_payload === 'INVALID_JSON') {
-      return res.status(400).json({ error: 'combo_payload must be valid JSON' });
-    }
-
-    const is_combo = deriveIsCombo({ ...body, service_description: desc });
-    const comboErr = await validateComboForCreate(is_combo, combo_payload);
+    const is_combo_final = deriveIsCombo({ ...body, service_description: desc, is_combo });
+    const comboErr = await validateComboForCreate(is_combo_final, combo_payload, provider_id);
     if (comboErr) {
       return res.status(400).json({ error: comboErr });
     }
 
-    if (!is_combo) {
+    if (!is_combo_final) {
       combo_payload = null;
     }
 
     let comboForModel = null;
-    if (is_combo && combo_payload != null && typeof combo_payload === 'object') {
+    if (is_combo_final && combo_payload != null && typeof combo_payload === 'object') {
       comboForModel = bindJsonDocument(combo_payload);
     }
 
-    const provider_name =
-      body.provider_name != null && String(body.provider_name).trim() !== ''
+    let selectedForModel = null;
+    if (selectedItems.length > 0) {
+      selectedForModel = bindJsonDocument(selectedItems);
+    }
+
+    const provider_name = isOpenRequest
+      ? 'À assigner'
+      : body.provider_name != null && String(body.provider_name).trim() !== ''
         ? String(body.provider_name).trim()
         : primaryDisplay || null;
 
@@ -249,8 +337,10 @@ const create = async (req, res) => {
       provider_id,
       provider_name,
       service_description: String(desc),
-      is_combo,
+      is_combo: is_combo_final,
+      is_open_request: isOpenRequest,
       combo_payload: comboForModel,
+      selected_items: selectedForModel,
       preferred_date: body.preferred_date || null,
       budget: body.budget != null ? String(body.budget) : null,
       status,
@@ -262,6 +352,18 @@ const create = async (req, res) => {
       const userRows = Array.isArray(userResult) ? userResult : userResult ? [userResult] : [];
       out = { ...out, client_email: userRows[0]?.email ?? out.client_email };
     }
+
+    if (is_combo_final && combo_payload?.lines?.length) {
+      await syncCollaboratorsFromCombo(out.id, combo_payload, { fromClient: true });
+      out.collaborators = await listCollaboratorsForRequest(out.id);
+      notifyComboRequestCreated(out).catch((e) => {
+        console.warn('[ServiceRequest create] combo notify failed:', e.message);
+      });
+    }
+    notifyRequestStatusChange(out.id, out.status).catch((e) => {
+      console.warn('[ServiceRequest create] notify failed:', e.message);
+    });
+
     return res.status(201).json(out);
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -270,8 +372,16 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
+    const before = await ServiceRequest.findById(req.params.id);
     const row = await ServiceRequest.update(req.params.id, req.body);
     if (!row) return res.status(404).json({ error: 'Not found' });
+
+    if (req.body?.status && before?.status && before.status !== row.status) {
+      notifyRequestStatusChange(row.id, row.status).catch((e) => {
+        console.warn('[ServiceRequest update] notify failed:', e.message);
+      });
+    }
+
     return res.json(serializeServiceRequestRow(row));
   } catch (err) {
     return res.status(500).json({ error: err.message });

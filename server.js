@@ -53,6 +53,7 @@ if (!JWT_SECRET || JWT_SECRET.trim() === '') {
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 trace('server.js loaded');
 
 const app = express();
@@ -60,6 +61,13 @@ app.set('trust proxy', 1);
 const isProd = IS_PROD;
 const quietLogs = QUIET_LOGS;
 
+app.use(
+  helmet({
+    // API + static uploads consumed by another origin (the Vite frontend):
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 app.use(cors({ origin: corsOrigin, credentials: true }));
 
 const stripeWebhookRoutes = require('./server/routes/stripeWebhook');
@@ -104,16 +112,20 @@ const offerRespondRoutes = require('./server/routes/offerRespond');
 app.use('/api/offers', offerRespondRoutes);
 mountSafe('/api/offers', './server/routes/offers');
 mountSafe('/api/payments', './server/routes/payments');
+mountSafe('/api/escrow', './server/routes/escrow');
 mountSafe('/api/reviews', './server/routes/reviews');
 mountSafe('/api/messages', './server/routes/messages');
 mountSafe('/api/service-items', './server/routes/serviceItems');
 mountSafe('/api/provider-availabilities', './server/routes/providerAvailabilities');
+mountSafe('/api/bookings', './server/routes/bookings');
 mountSafe('/api/favorites', './server/routes/favorites');
 mountSafe('/api/functions', './server/routes/functions');
 mountSafe('/api/upload', './server/routes/upload');
 mountSafe('/api/demandes', './server/routes/demandes');
 mountSafe('/api/admin/demandes', './server/routes/adminDemandes');
 mountSafe('/api/provider/demandes', './server/routes/providerDemandes');
+mountSafe('/api/platform-reviews', './server/routes/platformReviews');
+mountSafe('/api/notifications', './server/routes/notifications');
 mountSafe('/api/realtime', './server/routes/realtime');
 mountSafe('/api/public', './server/routes/public');
 trace('routes mounted');

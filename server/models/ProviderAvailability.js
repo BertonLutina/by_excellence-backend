@@ -2,17 +2,22 @@
 const BaseModel = require('./BaseModel');
 
 const TABLE = 'provider_availability';
-const COLUMNS = ['id', 'provider_id', 'day_of_week', 'start_time', 'end_time', 'is_available'];
+const COLUMNS = [
+  'id', 'provider_id', 'slot_date', 'day_of_week', 'start_time', 'end_time',
+  'is_available', 'booking_type',
+];
 
 class ProviderAvailability extends BaseModel {
   constructor(body = {}) {
     super({}, TABLE, COLUMNS, { autoIncrement: true });
     this.id = body?.id;
     this.provider_id = body?.provider_id;
+    this.slot_date = body?.slot_date;
     this.day_of_week = body?.day_of_week;
     this.start_time = body?.start_time;
     this.end_time = body?.end_time;
     this.is_available = body?.is_available;
+    this.booking_type = body?.booking_type;
   }
 }
 

@@ -6,6 +6,7 @@ const { computeFinalPaymentDueDate } = require('../utils/paymentWindow');
 const { buildInvoiceDataUrl } = require('./invoicePdfService');
 const { uploadBuffer } = require('./objectStorage');
 const constants = require('../../constants/constant');
+const { notifyRequestStatusChange } = require('./notificationService');
 
 function mysqlDateTime(iso) {
   if (!iso) return new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -16,16 +17,22 @@ function mysqlDateTime(iso) {
 async function updateServiceRequestStatusAfterPayment(payment, request, { fromWebhook }) {
   if (!request) return;
   const rid = request.id;
+  const oldStatus = request.status;
+  let newStatus = oldStatus;
+
   if (payment.type === 'deposit') {
-    await ServiceRequest.update(rid, { status: 'deposit_paid' });
+    newStatus = 'deposit_paid';
+    await ServiceRequest.update(rid, { status: newStatus });
   } else if (payment.type === 'final') {
-    await ServiceRequest.update(rid, { status: 'completed' });
+    newStatus = 'completed';
+    await ServiceRequest.update(rid, { status: newStatus });
   } else if (payment.type === 'installment') {
     if (fromWebhook) {
       const idx = Number(payment.installment_index);
       const total = Number(payment.installment_total);
       if (idx === total && total > 0) {
-        await ServiceRequest.update(rid, { status: 'completed' });
+        newStatus = 'completed';
+        await ServiceRequest.update(rid, { status: newStatus });
       }
     } else {
       const all = await Payment.findAll({ filters: { request_id: rid }, limit: 200 });
@@ -34,13 +41,21 @@ async function updateServiceRequestStatusAfterPayment(payment, request, { fromWe
         (p) => Number(p.id) === Number(payment.id) || p.status === 'paid'
       );
       if (allPaid) {
-        await ServiceRequest.update(rid, { status: 'completed' });
+        newStatus = 'completed';
+        await ServiceRequest.update(rid, { status: newStatus });
       } else if (
         !['deposit_paid', 'date_confirmed', 'final_payment_pending'].includes(request.status)
       ) {
-        await ServiceRequest.update(rid, { status: 'deposit_paid' });
+        newStatus = 'deposit_paid';
+        await ServiceRequest.update(rid, { status: newStatus });
       }
     }
+  }
+
+  if (newStatus !== oldStatus) {
+    notifyRequestStatusChange(rid, newStatus).catch((e) => {
+      console.warn('[paymentPostProcess] status notify failed:', e.message);
+    });
   }
 }
 

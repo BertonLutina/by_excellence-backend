@@ -1,6 +1,7 @@
 const Provider = require('../models/Provider');
 const { PortfolioImagesParseError } = require('../utils/portfolioImages');
 const { serializeProviderRow, serializeProviderRows } = require('../utils/serializeProvider');
+const { searchProviders } = require('../discovery/search');
 const {
   computeProviderTier,
   isValidProviderTier,
@@ -107,6 +108,47 @@ module.exports = {
       const row = await Provider.findById(req.params.id);
       if (!row) return res.status(404).json({ error: 'Not found' });
       return res.json(serializeProviderRow(row));
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
+  // Discovery: relevance-ranked search with optional "near me" geo + filters.
+  search: async (req, res) => {
+    try {
+      const q = req.query || {};
+      const num = (v) => (v == null || v === '' ? undefined : Number(v));
+      const bool = (v) => v === 'true' || v === '1';
+
+      const near =
+        num(q.lat) != null && num(q.lng) != null && num(q.radius_km) != null
+          ? { lat: num(q.lat), lng: num(q.lng), radiusKm: num(q.radius_km) }
+          : undefined;
+
+      const criteria = {
+        query: q.query || q.q || undefined,
+        categoryId: num(q.category_id),
+        city: q.city || undefined,
+        tier: q.tier || undefined,
+        verifiedOnly: bool(q.verified),
+        minRating: num(q.min_rating),
+        priceMin: num(q.price_min),
+        priceMax: num(q.price_max),
+        near,
+        limit: Math.min(Math.max(num(q.limit) || 50, 1), 200),
+      };
+
+      // Load candidates (active providers) and rank in-memory. As the catalog
+      // grows, push the equality filters into Provider.findAll and rank the rest.
+      const rows = await Provider.findAll({ filters: { status: 'active' }, limit: 1000 });
+      const ranked = searchProviders(rows, criteria);
+      // Serialize each row but keep the ranking fields the search added.
+      const items = ranked.map((p) => ({
+        ...serializeProviderRow(p),
+        _score: p._score,
+        ...(p._distanceKm != null ? { _distanceKm: p._distanceKm } : {}),
+      }));
+      return res.json({ items, count: ranked.length });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

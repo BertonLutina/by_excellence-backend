@@ -62,7 +62,7 @@ const APP_URL = process.env.APP_URL || defaultAppUrl;
 const API_BASE_URL = process.env.API_BASE_URL || APP_URL;
 
 /** Development: Vite default. Production: same as public app unless overridden. */
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN ;
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || APP_URL;
 
 let DB_SOCKET_PATH = process.env.DB_SOCKET_PATH || '';
 const DB_HOST = process.env.DB_HOST || '';
@@ -135,6 +135,12 @@ module.exports = {
 
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+  /**
+   * Opt-in instant-pay mode (skips Stripe and marks payments paid immediately).
+   * Useful for local testing without Stripe configured. By default, sandbox keys
+   * (`sk_test_*`) hit the real Stripe sandbox.
+   */
+  STRIPE_BYPASS: bool(process.env.STRIPE_BYPASS, false),
 
   /** Checkout Session ui_mode=elements (see POST /api/stripe/create-checkout-session) */
   STRIPE_ELEMENTS_PRICE_ID: (process.env.STRIPE_ELEMENTS_PRICE_ID || '').trim(),

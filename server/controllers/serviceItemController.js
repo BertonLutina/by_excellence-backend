@@ -74,6 +74,8 @@ function toModelPayload(body = {}, req) {
   if (out.name != null && out.title == null) out.title = out.name;
   if (out.title != null) out.title = String(out.title).trim();
 
+  if (out.item_type !== 'service') out.item_type = 'package';
+
   if (Object.prototype.hasOwnProperty.call(out, 'includes')) {
     out.includes = JSON.stringify(parseIncludes(out.includes));
   }

@@ -1,5 +1,5 @@
-const { FRONTEND_ORIGIN } = require('../../constants/constant');
-const { getStripe, isTestStripeKey } = require('../utils/stripeClient');
+const { FRONTEND_ORIGIN, STRIPE_BYPASS } = require('../../constants/constant');
+const { getStripe } = require('../utils/stripeClient');
 const Payment = require('../models/Payment');
 const ServiceRequest = require('../models/ServiceRequest');
 const paymentCommissionService = require('../services/paymentCommissionService');
@@ -126,7 +126,10 @@ exports.invoke = async (req, res) => {
         const feeCents = Math.round(commissionBreakdown.admin_commission_amount * 100);
 
         const stripe = getStripe();
-        const useInstantPay = !stripe || isTestStripeKey();
+        // Skip Stripe only when explicitly requested (STRIPE_BYPASS=1) or when
+        // no key is configured at all. With sk_test_*, fall through to a real
+        // sandbox Checkout session so devs can validate the full flow.
+        const useInstantPay = !stripe || STRIPE_BYPASS;
 
         if (useInstantPay) {
           const result = await markPaymentPaid(payment_id, { payment_method: 'card', fromWebhook: false });

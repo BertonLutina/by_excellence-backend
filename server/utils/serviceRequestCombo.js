@@ -56,12 +56,49 @@ async function validateComboPayloadStructured(combo_payload) {
  * Legacy text-only combo (marker in service_description, no payload) passes.
  * @returns {Promise<string|null>}
  */
-async function validateComboForCreate(is_combo, combo_payload) {
+async function validateComboForCreate(is_combo, combo_payload, primaryProviderId = null) {
   if (!is_combo) return null;
   if (combo_payload == null) return null;
   if (typeof combo_payload !== 'object') return null;
   if (!Object.prototype.hasOwnProperty.call(combo_payload, 'lines')) return null;
-  return validateComboPayloadStructured(combo_payload);
+  const err = await validateComboPayloadStructured(combo_payload);
+  if (err) return err;
+
+  const primary = normalizeProviderId(combo_payload.primary_provider_id ?? primaryProviderId);
+  if (primary) {
+    const lineIds = combo_payload.lines.map((l) => normalizeProviderId(l?.provider_id)).filter(Boolean);
+    if (!lineIds.includes(primary)) {
+      return 'primary_provider_id must be included in combo_payload.lines';
+    }
+  }
+  return null;
+}
+
+/**
+ * Normalize combo payload from API body (add roles, primary_provider_id).
+ */
+function normalizeComboPayload(raw, primaryProviderId) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.lines)) return null;
+  const primary = normalizeProviderId(raw.primary_provider_id ?? primaryProviderId);
+  const lines = raw.lines
+    .map((line) => {
+      const pid = normalizeProviderId(line?.provider_id);
+      if (!pid) return null;
+      return {
+        provider_id: pid,
+        role: primary && pid === primary ? 'lead' : line.role === 'lead' ? 'lead' : 'partner',
+        note: line.note != null ? String(line.note).trim() : '',
+      };
+    })
+    .filter(Boolean);
+
+  if (lines.length < 2) return null;
+
+  return {
+    primary_provider_id: primary || lines[0]?.provider_id,
+    lines,
+    common_notes: raw.common_notes != null ? String(raw.common_notes).trim() : '',
+  };
 }
 
 module.exports = {
@@ -70,4 +107,5 @@ module.exports = {
   deriveIsCombo,
   validateComboForCreate,
   validateComboPayloadStructured,
+  normalizeComboPayload,
 };

@@ -54,14 +54,75 @@ async function updateClientStatus(id, status) {
 }
 
 async function getClientDemandes(clientId) {
-  const sql = `
-    SELECT id, client_id, status, service_description AS description, created_date, updated_date
-    FROM service_requests
-    WHERE client_id = ?
-    ORDER BY created_date DESC
+  // The admin panel passes clients.id, but service_requests.client_id can be:
+  //  - clients.user_id (schema-correct, JWT-based inserts), OR
+  //  - clients.id (legacy data inserted via a different path), OR
+  //  - matched by client_email when client_id is NULL
+  // We resolve all three paths and merge the results, deduping by sr.id.
+  // This makes the endpoint resilient to data inconsistencies.
+
+  // Lookup the client row first to know both ids and email.
+  const clientRows = await executeSQL(
+    `SELECT c.id, c.user_id, u.email
+     FROM clients c
+     LEFT JOIN users u ON u.id = c.user_id
+     WHERE c.id = ?`,
+    [clientId]
+  );
+  const clientArr = Array.isArray(clientRows) ? clientRows : [];
+  const client = clientArr[0];
+  if (!client) return [];
+
+  const userId = client.user_id;
+  const email = client.email;
+  // Note: service_requests uses `created_at` (not `created_date`).
+  // We expose it as `created_date` to keep the frontend contract stable.
+  const SELECT_CLAUSE = `
+    SELECT sr.id,
+           sr.client_id,
+           sr.status,
+           sr.service_description AS description,
+           sr.created_at AS created_date,
+           sr.updated_date,
+           sr.client_email
+    FROM service_requests sr
   `;
-  const rows = await executeSQL(sql, [clientId]);
-  return Array.isArray(rows) ? rows : [];
+
+  const queries = [];
+  if (userId != null) {
+    queries.push(executeSQL(`${SELECT_CLAUSE} WHERE sr.client_id = ?`, [userId]));
+  }
+  queries.push(executeSQL(`${SELECT_CLAUSE} WHERE sr.client_id = ?`, [clientId]));
+  if (email) {
+    queries.push(executeSQL(`${SELECT_CLAUSE} WHERE sr.client_id IS NULL AND sr.client_email = ?`, [email]));
+  }
+
+  const all = await Promise.all(queries);
+  const map = new Map();
+  for (const set of all) {
+    const arr = Array.isArray(set) ? set : [];
+    for (const row of arr) {
+      if (!map.has(row.id)) map.set(row.id, row);
+    }
+  }
+  const merged = [...map.values()].sort((a, b) => {
+    const ta = new Date(a.created_date || 0).getTime();
+    const tb = new Date(b.created_date || 0).getTime();
+    return tb - ta;
+  });
+
+  // eslint-disable-next-line no-console
+  console.log('[getClientDemandes] resilient resolve', {
+    clientId,
+    userId,
+    email,
+    foundByUserId: all[0] ? (Array.isArray(all[0]) ? all[0].length : 0) : 0,
+    foundByClientId: (Array.isArray(all[userId != null ? 1 : 0]) ? all[userId != null ? 1 : 0].length : 0),
+    foundByEmail: email && all[all.length - 1] ? (Array.isArray(all[all.length - 1]) ? all[all.length - 1].length : 0) : 0,
+    totalReturned: merged.length,
+  });
+
+  return merged;
 }
 
 async function listProviders(query) {

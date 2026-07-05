@@ -4,9 +4,11 @@ const { coercePortfolioImages, bindJsonDocument } = require('../utils/portfolioI
 
 const TABLE = 'providers';
 const COLUMNS = [
-  'id', 'user_id', 'display_name', 'profession', 'bio', 'photo_url', 'banner_url', 'city', 'category_id',
+  'id', 'user_id', 'display_name', 'profession', 'bio', 'photo_url', 'banner_url', 'city', 'lat', 'lng', 'category_id',
   'price_from', 'provider_tier', 'premium_commission_percent', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'structure_type', 'worker_count', 'siret', 'vat_number',
-  'legal_address', 'coords', 'insurance_certificate', 'video_url', 'access', 'status_verification', 'created_at', 'updated_date',
+  'legal_address', 'coords', 'insurance_certificate', 'video_url',
+  'website_url', 'facebook_url', 'instagram_url', 'tiktok_url', 'linkedin_url',
+  'access', 'status_verification', 'created_at', 'updated_date',
 ];
 
 class Provider extends BaseModel {
@@ -20,6 +22,8 @@ class Provider extends BaseModel {
     this.photo_url = body?.photo_url;
     this.banner_url = body?.banner_url;
     this.city = body?.city;
+    this.lat = body?.lat;
+    this.lng = body?.lng;
     this.category_id = body?.category_id;
     this.price_from = body?.price_from;
     this.provider_tier = body?.provider_tier;
@@ -42,6 +46,11 @@ class Provider extends BaseModel {
     this.coords = body?.coords;
     this.insurance_certificate = body?.insurance_certificate;
     this.video_url = body?.video_url;
+    this.website_url = body?.website_url;
+    this.facebook_url = body?.facebook_url;
+    this.instagram_url = body?.instagram_url;
+    this.tiktok_url = body?.tiktok_url;
+    this.linkedin_url = body?.linkedin_url;
     this.access = body?.access;
     this.status_verification = body?.status_verification;
     this.created_at = body?.created_at;
