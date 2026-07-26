@@ -1,6 +1,7 @@
 const Payment = require('../models/Payment');
 const ServiceRequest = require('../models/ServiceRequest');
 const { sendMail } = require('../utils/mailer');
+const { emailWantsEmail } = require('../utils/emailPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
 
 function paymentEmailCopy(payment) {
@@ -44,6 +45,10 @@ async function sendPaymentConfirmationEmail(paymentId) {
 
   const request = await ServiceRequest.findById(payment.request_id);
   if (!request || !request.client_email) return { ok: false, error: 'Request or client email missing' };
+
+  if (!(await emailWantsEmail(request.client_email, 'payments.confirmation'))) {
+    return { ok: true, skipped: true, reason: 'prefs' };
+  }
 
   const { paymentType, icon, receivedPhrase, extraHtml } = paymentEmailCopy(payment);
   const detailUrl = `${FRONTEND_ORIGIN.replace(/\/$/, '')}/ClientRequestDetail?id=${request.id}`;

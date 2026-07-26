@@ -164,3 +164,97 @@ test('notifyOfferStatusChange skips opted-out client/provider and keeps admin em
     ['admin@example.com']
   );
 });
+
+test('sendPaymentConfirmationEmail skips opted-out client', async () => {
+  const sendMailCalls = [];
+
+  const { sendPaymentConfirmationEmail } = loadWithStubs('../services/paymentConfirmationEmail', {
+    '../models/Payment': {
+      findById: async () => ({
+        id: 1,
+        request_id: 99,
+        type: 'deposit',
+        amount: 100,
+      }),
+    },
+    '../models/ServiceRequest': {
+      findById: async () => ({
+        id: 99,
+        client_email: 'client@example.com',
+        client_name: 'Client',
+        provider_name: 'Provider',
+      }),
+    },
+    '../utils/mailer': {
+      sendMail: async (payload) => {
+        sendMailCalls.push(payload);
+      },
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../utils/emailPreferences': {
+      emailWantsEmail: async () => false,
+    },
+  });
+
+  const result = await sendPaymentConfirmationEmail(1);
+
+  assert.deepEqual(result, { ok: true, skipped: true, reason: 'prefs' });
+  assert.equal(sendMailCalls.length, 0);
+});
+
+test('sendPaymentReminders skips opted-out client reminders but keeps admin overdue alert', async () => {
+  const sendMailCalls = [];
+  const eventDate = new Date();
+  eventDate.setDate(eventDate.getDate() + 3);
+
+  const { sendPaymentReminders } = loadWithStubs('../services/paymentRemindersService', {
+    '../models/Payment': {
+      findAll: async () => [
+        {
+          id: 42,
+          request_id: 99,
+          type: 'final',
+          amount: 500,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    },
+    '../models/ServiceRequest': {
+      findById: async () => ({
+        id: 99,
+        client_email: 'client@example.com',
+        client_name: 'Client',
+        provider_name: 'Provider',
+        status: 'date_confirmed',
+        confirmed_date: eventDate.toISOString(),
+      }),
+    },
+    '../models/User': {
+      findAll: async () => [{ id: 1, email: 'admin@example.com' }],
+    },
+    '../utils/mailer': {
+      sendMail: async (payload) => {
+        sendMailCalls.push(payload);
+      },
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../utils/paymentWindow': require('../utils/paymentWindow'),
+    '../utils/emailPreferences': {
+      emailWantsEmail: async (_email, key) => key !== 'payments.reminder_overdue',
+    },
+  });
+
+  const result = await sendPaymentReminders({ days_before: 3, days_after: 1 });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(
+    sendMailCalls.map((call) => call.to),
+    ['admin@example.com']
+  );
+  assert.ok(result.details.some((d) => d.type === 'admin_overdue_alert'));
+});

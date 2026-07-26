@@ -1,6 +1,7 @@
 const Payment = require('../models/Payment');
 const ServiceRequest = require('../models/ServiceRequest');
 const { sendMail } = require('../utils/mailer');
+const { emailWantsEmail } = require('../utils/emailPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
 const { getPaymentWindowStatus } = require('../utils/paymentWindow');
 const User = require('../models/User');
@@ -66,6 +67,17 @@ async function sendPaymentReminders(body = {}) {
 
         if (windowStatus.status === 'open' && windowStatus.daysUntilEvent <= 30 && windowStatus.daysUntilEvent >= 28) {
           // Just entered the window (around J-30): notify client
+          if (!(await emailWantsEmail(request.client_email, 'payments.window_open'))) {
+            results.push({
+              request_id: requestId,
+              payment_id: payment.id,
+              type: 'window_open_email',
+              sent: false,
+              skipped: true,
+              reason: 'prefs',
+            });
+            continue;
+          }
           await sendMail({
             to: request.client_email,
             subject: 'Votre paiement final est maintenant disponible — By Excellence',
@@ -137,6 +149,22 @@ async function sendPaymentReminders(body = {}) {
       }
 
       if (!reminderType) continue;
+
+      const reminderPrefKey =
+        reminderType === 'overdue' ? 'payments.reminder_overdue' : 'payments.reminder_upcoming';
+      if (!(await emailWantsEmail(request.client_email, reminderPrefKey))) {
+        results.push({
+          request_id: requestId,
+          client_email: request.client_email,
+          payment_type: payment.type,
+          amount: payment.amount,
+          reminder_type: reminderType,
+          sent: false,
+          skipped: true,
+          reason: 'prefs',
+        });
+        continue;
+      }
 
       const paymentTypeLabel =
         payment.type === 'deposit'
