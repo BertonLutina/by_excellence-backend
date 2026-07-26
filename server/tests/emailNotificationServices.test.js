@@ -301,6 +301,7 @@ test('notifyComboRequestCreated emails all combo targets after in-app notificati
     },
     '../utils/emailPreferences': {
       emailWantsEmail: async () => true,
+      wantsEmail: () => true,
       userWantsEmail: async () => true,
     },
     '../../constants/constant': {
@@ -368,6 +369,7 @@ test('notifyCollaborationInvite emails invitee and inviter when allowed', async 
     },
     '../utils/emailPreferences': {
       emailWantsEmail: async () => true,
+      wantsEmail: () => true,
       userWantsEmail: async () => true,
     },
     '../../constants/constant': {
@@ -431,6 +433,7 @@ test('notifyCollaborationResponse emails only the lead and not admins', async ()
     },
     '../utils/emailPreferences': {
       emailWantsEmail: async () => true,
+      wantsEmail: () => true,
       userWantsEmail: async () => true,
     },
     '../../constants/constant': {

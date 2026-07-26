@@ -5,7 +5,7 @@ const Offer = require('../models/Offer');
 const Provider = require('../models/Provider');
 const User = require('../models/User');
 const { sendMail } = require('../utils/mailer');
-const { emailWantsEmail, userWantsEmail } = require('../utils/emailPreferences');
+const { emailWantsEmail, userWantsEmail, wantsEmail } = require('../utils/emailPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
 const { sendStatusNotification, STATUS_CONFIG, emailTemplate } = require('./statusNotificationService');
 
@@ -65,9 +65,8 @@ async function getProviderUserId(providerId) {
 }
 
 async function sendPrefEmail(userId, prefKey, { subject, title, bodyHtml, ctaUrl, ctaLabel }) {
-  if (!(await userWantsEmail(userId, prefKey))) return;
   const u = await User.findById(userId);
-  if (!u?.email) return;
+  if (!u?.email || !wantsEmail(u, prefKey)) return;
   await sendMail({
     to: u.email,
     subject,
