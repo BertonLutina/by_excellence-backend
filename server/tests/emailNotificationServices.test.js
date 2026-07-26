@@ -258,3 +258,196 @@ test('sendPaymentReminders skips opted-out client reminders but keeps admin over
   );
   assert.ok(result.details.some((d) => d.type === 'admin_overdue_alert'));
 });
+
+test('notifyComboRequestCreated emails all combo targets after in-app notifications', async () => {
+  const sendMailCalls = [];
+  const insertedNotifications = [];
+
+  const { notifyComboRequestCreated } = loadWithStubs('../services/notificationService', {
+    '../db/db': {
+      executeSQL: async (sql, params) => {
+        if (sql.includes('SELECT user_id FROM providers')) {
+          if (params[0] === 9) return [{ user_id: 21 }];
+          return [];
+        }
+        if (sql.includes("SELECT user_id FROM admins WHERE status = 'active'")) return [{ user_id: 31 }];
+        if (sql.includes('SELECT user_id FROM clients')) return [{ user_id: 11 }];
+        if (sql.includes('INSERT INTO notifications')) {
+          insertedNotifications.push(params);
+          return { insertId: insertedNotifications.length };
+        }
+        return [];
+      },
+    },
+    '../realtime/sseBus': {
+      publishToUser: () => {},
+    },
+    '../models/ServiceRequest': {},
+    '../models/Offer': {},
+    '../models/Provider': {},
+    '../models/User': {
+      findById: async (id) =>
+        ({
+          11: { id: 11, email: 'client@example.com' },
+          21: { id: 21, email: 'provider@example.com' },
+          31: { id: 31, email: 'admin@example.com' },
+        })[id] || null,
+      findAll: async () => [],
+    },
+    '../utils/mailer': {
+      sendMail: async (payload) => {
+        sendMailCalls.push(payload);
+      },
+    },
+    '../utils/emailPreferences': {
+      emailWantsEmail: async () => true,
+      userWantsEmail: async () => true,
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../services/statusNotificationService': {
+      sendStatusNotification: async () => ({ ok: true }),
+      STATUS_CONFIG: {},
+      emailTemplate: (_title, bodyHtml, ctaUrl) => `${bodyHtml} :: ${ctaUrl}`,
+    },
+  });
+
+  await notifyComboRequestCreated({
+    id: 654321,
+    client_id: 5,
+    client_name: 'Client',
+    collaborators: [{ provider_id: 9 }],
+  });
+
+  assert.equal(insertedNotifications.length, 3);
+  assert.deepEqual(
+    sendMailCalls.map((call) => call.to),
+    ['provider@example.com', 'admin@example.com', 'client@example.com']
+  );
+});
+
+test('notifyCollaborationInvite emails invitee and inviter when allowed', async () => {
+  const sendMailCalls = [];
+  const insertedNotifications = [];
+
+  const { notifyCollaborationInvite } = loadWithStubs('../services/notificationService', {
+    '../db/db': {
+      executeSQL: async (sql, params) => {
+        if (sql.includes('SELECT user_id FROM providers')) {
+          if (params[0] === 8) return [{ user_id: 18 }];
+          if (params[0] === 9) return [{ user_id: 19 }];
+          return [];
+        }
+        if (sql.includes('SELECT display_name FROM providers')) return [{ display_name: 'Lead Provider' }];
+        if (sql.includes('INSERT INTO notifications')) {
+          insertedNotifications.push(params);
+          return { insertId: insertedNotifications.length };
+        }
+        return [];
+      },
+    },
+    '../realtime/sseBus': {
+      publishToUser: () => {},
+    },
+    '../models/ServiceRequest': {},
+    '../models/Offer': {},
+    '../models/Provider': {},
+    '../models/User': {
+      findById: async (id) =>
+        ({
+          18: { id: 18, email: 'invitee@example.com' },
+          19: { id: 19, email: 'inviter@example.com' },
+        })[id] || null,
+      findAll: async () => [],
+    },
+    '../utils/mailer': {
+      sendMail: async (payload) => {
+        sendMailCalls.push(payload);
+      },
+    },
+    '../utils/emailPreferences': {
+      emailWantsEmail: async () => true,
+      userWantsEmail: async () => true,
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../services/statusNotificationService': {
+      sendStatusNotification: async () => ({ ok: true }),
+      STATUS_CONFIG: {},
+      emailTemplate: (_title, bodyHtml, ctaUrl) => `${bodyHtml} :: ${ctaUrl}`,
+    },
+  });
+
+  await notifyCollaborationInvite(777111, 8, 9);
+
+  assert.equal(insertedNotifications.length, 1);
+  assert.deepEqual(
+    sendMailCalls.map((call) => call.to),
+    ['invitee@example.com', 'inviter@example.com']
+  );
+});
+
+test('notifyCollaborationResponse emails only the lead and not admins', async () => {
+  const sendMailCalls = [];
+  const insertedNotifications = [];
+
+  const { notifyCollaborationResponse } = loadWithStubs('../services/notificationService', {
+    '../db/db': {
+      executeSQL: async (sql, params) => {
+        if (sql.includes("SELECT provider_id FROM service_request_collaborators")) return [{ provider_id: 9 }];
+        if (sql.includes('SELECT user_id FROM providers')) {
+          if (params[0] === 9) return [{ user_id: 19 }];
+          return [];
+        }
+        if (sql.includes("SELECT user_id FROM admins WHERE status = 'active'")) return [{ user_id: 31 }];
+        if (sql.includes('SELECT display_name FROM providers')) return [{ display_name: 'Invitee Provider' }];
+        if (sql.includes('INSERT INTO notifications')) {
+          insertedNotifications.push(params);
+          return { insertId: insertedNotifications.length };
+        }
+        return [];
+      },
+    },
+    '../realtime/sseBus': {
+      publishToUser: () => {},
+    },
+    '../models/ServiceRequest': {},
+    '../models/Offer': {},
+    '../models/Provider': {},
+    '../models/User': {
+      findById: async (id) =>
+        ({
+          19: { id: 19, email: 'lead@example.com' },
+          31: { id: 31, email: 'admin@example.com' },
+        })[id] || null,
+      findAll: async () => [],
+    },
+    '../utils/mailer': {
+      sendMail: async (payload) => {
+        sendMailCalls.push(payload);
+      },
+    },
+    '../utils/emailPreferences': {
+      emailWantsEmail: async () => true,
+      userWantsEmail: async () => true,
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../services/statusNotificationService': {
+      sendStatusNotification: async () => ({ ok: true }),
+      STATUS_CONFIG: {},
+      emailTemplate: (_title, bodyHtml, ctaUrl) => `${bodyHtml} :: ${ctaUrl}`,
+    },
+  });
+
+  await notifyCollaborationResponse(444222, 8, 'accepted');
+
+  assert.equal(insertedNotifications.length, 2);
+  assert.deepEqual(
+    sendMailCalls.map((call) => call.to),
+    ['lead@example.com']
+  );
+});

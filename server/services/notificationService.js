@@ -64,6 +64,17 @@ async function getProviderUserId(providerId) {
   return r?.user_id ? Number(r.user_id) : null;
 }
 
+async function sendPrefEmail(userId, prefKey, { subject, title, bodyHtml, ctaUrl, ctaLabel }) {
+  if (!(await userWantsEmail(userId, prefKey))) return;
+  const u = await User.findById(userId);
+  if (!u?.email) return;
+  await sendMail({
+    to: u.email,
+    subject,
+    html: emailTemplate(title, bodyHtml, ctaUrl, ctaLabel),
+  }).catch((e) => console.warn(`[email ${prefKey}]`, e.message));
+}
+
 async function insertNotification(userId, { type, title, body, payload }) {
   const uid = Number(userId);
   if (!uid) return null;
@@ -195,6 +206,16 @@ async function notifyComboRequestCreated(requestRow) {
       payload: { request_id: requestId, href: t.href, is_combo: true },
     });
   }
+
+  for (const t of targets) {
+    await sendPrefEmail(t.userId, 'combo.request', {
+      subject: `[By Excellence] ${title}`,
+      title,
+      bodyHtml: `<p>${body}</p><p style="color:#666;font-size:13px;">Connectez-vous pour voir les détails de la demande combo.</p>`,
+      ctaUrl: t.href.startsWith('http') ? t.href : `${appBase()}${t.href}`,
+      ctaLabel: 'Voir la demande',
+    });
+  }
 }
 
 async function notifyCollaborationInvite(requestId, invitedProviderId, invitedByProviderId) {
@@ -218,6 +239,31 @@ async function notifyCollaborationInvite(requestId, invitedProviderId, invitedBy
       href: detailUrlForRole('provider', requestId),
     },
   });
+
+  const inviteTitle = '📩 Invitation à collaborer';
+  const inviteBody = leadName
+    ? `<p><strong>${leadName}</strong> vous invite à collaborer sur la demande #${String(requestId).slice(-6)}.</p>`
+    : `<p>Vous êtes invité à collaborer sur la demande #${String(requestId).slice(-6)}.</p>`;
+  const href = detailUrlForRole('provider', requestId);
+
+  await sendPrefEmail(invitedUserId, 'collaboration.invite', {
+    subject: `[By Excellence] ${inviteTitle}`,
+    title: inviteTitle,
+    bodyHtml: inviteBody,
+    ctaUrl: href.startsWith('http') ? href : `${appBase()}${href}`,
+    ctaLabel: 'Voir la demande',
+  });
+
+  const inviterUserId = invitedByProviderId ? await getProviderUserId(invitedByProviderId) : null;
+  if (inviterUserId) {
+    await sendPrefEmail(inviterUserId, 'collaboration.invite', {
+      subject: '[By Excellence] Invitation envoyée',
+      title: '📩 Invitation envoyée',
+      bodyHtml: `<p>Votre invitation de collaboration pour la demande #${String(requestId).slice(-6)} a été envoyée.</p>`,
+      ctaUrl: href.startsWith('http') ? href : `${appBase()}${href}`,
+      ctaLabel: 'Voir la demande',
+    });
+  }
 }
 
 async function notifyCollaborationResponse(requestId, providerId, status) {
@@ -251,6 +297,16 @@ async function notifyCollaborationResponse(requestId, providerId, status) {
         status,
         href: detailUrlForRole('admin', requestId),
       },
+    });
+  }
+
+  if (leadUserId) {
+    await sendPrefEmail(leadUserId, 'collaboration.response', {
+      subject: `[By Excellence] ${title}`,
+      title,
+      bodyHtml: `<p>${body}</p>`,
+      ctaUrl: detailUrlForRole('provider', requestId),
+      ctaLabel: 'Voir la demande',
     });
   }
 }
