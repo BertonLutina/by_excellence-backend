@@ -8,6 +8,7 @@ const Provider = require('../models/Provider');
 const Admin = require('../models/Admin');
 const ServiceRequest = require('../models/ServiceRequest');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../../constants/constant');
+const { getEmailPrefs, mergeEmailPrefs } = require('../utils/emailPreferences');
 
 const ID_TO_ROLE = { 1: 'client', 2: 'provider', 3: 'admin' };
 const roleString = (user) => (user && user.role != null ? ID_TO_ROLE[user.role] ?? String(user.role) : undefined);
@@ -93,7 +94,11 @@ exports.me = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     await ServiceRequest.attachClientIdByEmail(user.id, user.email).catch(() => {});
-    res.json({ ...user, role: roleString(user) });
+    res.json({
+      ...user,
+      role: roleString(user),
+      email_notifications: getEmailPrefs(user.email_notifications),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -162,6 +167,22 @@ exports.resetPassword = async (req, res) => {
     await User.updatePassword(user.id, hash);
     await User.clearResetToken(user.id);
     res.json({ message: 'Password reset successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateEmailNotifications = async (req, res) => {
+  try {
+    const partial = req.body?.email_notifications ?? req.body;
+    if (!partial || typeof partial !== 'object' || Array.isArray(partial)) {
+      return res.status(400).json({ error: 'email_notifications object required' });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const merged = mergeEmailPrefs(user.email_notifications, partial);
+    await User.updateEmailNotifications(user.id, merged);
+    res.json({ email_notifications: merged });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

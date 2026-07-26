@@ -6,6 +6,7 @@ const authRouteRateLimit = require('../middleware/authRouteRateLimit');
 router.post('/register', authRouteRateLimit, ctrl.register);
 router.post('/login', authRouteRateLimit, ctrl.login);
 router.get('/me', authenticate, ctrl.me);
+router.put('/email-notifications', authenticate, ctrl.updateEmailNotifications);
 router.put('/change-password', authenticate, ctrl.changePassword);
 
 router.get('/verify-email', ctrl.verifyEmail);
