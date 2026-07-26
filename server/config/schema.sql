@@ -32,6 +32,7 @@ CREATE TABLE users (
     full_name VARCHAR(150),
     role_id BIGINT UNSIGNED NOT NULL,
     is_email_verified BOOLEAN DEFAULT FALSE,
+    email_notifications JSON NULL,
     verification_token VARCHAR(255),
     verification_token_expires DATETIME,
     reset_token VARCHAR(255),

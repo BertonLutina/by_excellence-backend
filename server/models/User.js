@@ -22,6 +22,7 @@ class User {
     this.full_name = body?.full_name;
     this.role_id = body?.role_id ?? body?.role;
     this.is_email_verified = body?.is_email_verified;
+    this.email_notifications = body?.email_notifications;
     this.verification_token = body?.verification_token;
     this.verification_token_expires = body?.verification_token_expires;
     this.reset_token = body?.reset_token;
@@ -38,6 +39,7 @@ class User {
       full_name: this.full_name,
       role_id: this.role_id,
       is_email_verified: this.is_email_verified,
+      email_notifications: this.email_notifications,
       verification_token: this.verification_token,
       verification_token_expires: this.verification_token_expires,
       reset_token: this.reset_token,
@@ -54,6 +56,7 @@ class User {
     this.full_name = body?.full_name;
     this.role_id = body?.role_id ?? body?.role;
     this.is_email_verified = body?.is_email_verified;
+    this.email_notifications = body?.email_notifications;
     this.verification_token = body?.verification_token;
     this.verification_token_expires = body?.verification_token_expires;
     this.reset_token = body?.reset_token;
@@ -63,13 +66,13 @@ class User {
   }
 
   async findById(id) {
-    const sql = `SELECT id, email, full_name, role_id AS role, is_email_verified, created_date, updated_date FROM \`${TABLE}\` WHERE id = ?`;
+    const sql = `SELECT id, email, full_name, role_id AS role, is_email_verified, email_notifications, created_date, updated_date FROM \`${TABLE}\` WHERE id = ?`;
     const rows = await executeSQL(sql, [id]);
     return rows[0] || null;
   }
 
   async findByEmail(email) {
-    const sql = `SELECT id, email, password_hash, full_name, role_id AS role, is_email_verified,
+    const sql = `SELECT id, email, password_hash, full_name, role_id AS role, is_email_verified, email_notifications,
       verification_token, verification_token_expires, reset_token, reset_token_expires,
       created_date, updated_date FROM \`${TABLE}\` WHERE email = ?`;
     const rows = await executeSQL(sql, [email]);
@@ -176,6 +179,16 @@ class User {
       const roleId = typeof this.role_id === 'number' ? this.role_id : ROLE_TO_ID[this.role_id] ?? this.role_id;
       values.push(roleId);
     }
+    if (this.email_notifications !== undefined) {
+      sets.push('email_notifications = ?');
+      values.push(
+        this.email_notifications == null
+          ? null
+          : typeof this.email_notifications === 'string'
+            ? this.email_notifications
+            : JSON.stringify(this.email_notifications)
+      );
+    }
     if (!sets.length) return this.findById(this.id);
     sets.push('updated_date = ?');
     values.push(now());
@@ -208,6 +221,9 @@ User.setNewVerificationToken = (id) => new User({}).setNewVerificationToken(id);
 User.setResetToken = (id) => new User({}).setResetToken(id);
 User.clearResetToken = (id) => new User({}).clearResetToken(id);
 User.update = (id, data) => new User({ id, ...data }).update();
+User.updateEmailNotifications = async (id, prefsObject) => {
+  return User.update(id, { email_notifications: prefsObject });
+};
 User.updatePassword = (id, password_hash) => new User({}).updatePassword(id, password_hash);
 User.delete = (id) => new User({ id }).delete();
 

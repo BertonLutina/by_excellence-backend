@@ -28,6 +28,7 @@ const MIGRATIONS = [
   { table: 'service_requests', column: 'selected_items', ddl: 'selected_items JSON NULL AFTER combo_payload' },
   { table: 'service_requests', column: 'is_open_request', ddl: 'is_open_request BOOLEAN NOT NULL DEFAULT FALSE AFTER is_combo' },
   { table: 'offers', column: 'commission_mode', ddl: "commission_mode ENUM('included','on_top') NOT NULL DEFAULT 'included' AFTER deposit_percentage" },
+  { table: 'users', column: 'email_notifications', ddl: 'email_notifications JSON NULL AFTER is_email_verified' },
 ];
 
 // Indexes added after columns; the same `IF NOT EXISTS` issue applies, so we
