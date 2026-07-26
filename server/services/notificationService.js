@@ -5,8 +5,9 @@ const Offer = require('../models/Offer');
 const Provider = require('../models/Provider');
 const User = require('../models/User');
 const { sendMail } = require('../utils/mailer');
+const { emailWantsEmail, userWantsEmail } = require('../utils/emailPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
-const { sendStatusNotification, STATUS_CONFIG } = require('./statusNotificationService');
+const { sendStatusNotification, STATUS_CONFIG, emailTemplate } = require('./statusNotificationService');
 
 const OFFER_STATUS_CONFIG = {
   sent_to_admin: {
@@ -371,24 +372,34 @@ async function notifyOfferStatusChange(offerId, newStatus, { sendEmail = true } 
 
   if (!sendEmail) return;
 
-  const appUrl = appBase();
   const admins = await User.findAll({ role: 'admin' });
+  const prefKey = `offer.${newStatus}`;
 
-  if (cfg.client && request.client_email) {
+  if (cfg.client && request.client_email && (await emailWantsEmail(request.client_email, prefKey))) {
     await sendMail({
       to: request.client_email,
       subject: `[By Excellence] ${title}`,
-      html: `<p>Bonjour ${request.client_name || ''},</p><p>${title} pour votre demande #${shortId}.</p><p><a href="${detailUrlForRole('client', request.id)}">Voir ma demande</a></p>`,
+      html: emailTemplate(
+        title,
+        `<p>Bonjour ${request.client_name || ''},</p><p>${title} pour votre demande #${shortId}.</p>`,
+        detailUrlForRole('client', request.id),
+        'Voir ma demande'
+      ),
     }).catch((e) => console.warn('[offer-email] client:', e.message));
   }
 
-  if (cfg.provider && providerUserId) {
+  if (cfg.provider && providerUserId && (await userWantsEmail(providerUserId, prefKey))) {
     const u = await User.findById(providerUserId);
     if (u?.email) {
       await sendMail({
         to: u.email,
         subject: `[By Excellence] ${title}`,
-        html: `<p>Bonjour,</p><p>${title} — demande de ${request.client_name || 'client'}.</p><p><a href="${detailUrlForRole('provider', request.id, offer.id)}">Voir mes offres</a></p>`,
+        html: emailTemplate(
+          title,
+          `<p>Bonjour,</p><p>${title} — demande de ${request.client_name || 'client'}.</p>`,
+          detailUrlForRole('provider', request.id, offer.id),
+          'Voir mes offres'
+        ),
       }).catch((e) => console.warn('[offer-email] provider:', e.message));
     }
   }
@@ -399,7 +410,12 @@ async function notifyOfferStatusChange(offerId, newStatus, { sendEmail = true } 
       await sendMail({
         to: admin.email,
         subject: `[By Excellence Admin] ${title} — #${shortId}`,
-        html: `<p>${title} — ${request.client_name} / ${request.provider_name}.</p><p><a href="${detailUrlForRole('admin', request.id)}">Voir la demande</a></p>`,
+        html: emailTemplate(
+          title,
+          `<p>${title} — ${request.client_name} / ${request.provider_name}.</p>`,
+          detailUrlForRole('admin', request.id),
+          'Voir la demande'
+        ),
       }).catch((e) => console.warn('[offer-email] admin:', e.message));
     }
   }

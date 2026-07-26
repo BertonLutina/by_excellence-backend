@@ -2,6 +2,7 @@ const ServiceRequest = require('../models/ServiceRequest');
 const Provider = require('../models/Provider');
 const User = require('../models/User');
 const { sendMail } = require('../utils/mailer');
+const { emailWantsEmail, wantsEmail } = require('../utils/emailPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
 
 const STATUS_CONFIG = {
@@ -63,12 +64,13 @@ async function sendStatusNotification(input) {
     return { ok: false, code: 404, error: 'Request not found' };
   }
 
+  let providerUser = null;
   let providerEmail = null;
   if (request.provider_id) {
     const provider = await Provider.findById(request.provider_id);
     if (provider?.user_id) {
-      const u = await User.findById(provider.user_id);
-      providerEmail = u?.email || null;
+      providerUser = await User.findById(provider.user_id);
+      providerEmail = providerUser?.email || null;
     }
   }
 
@@ -79,28 +81,31 @@ async function sendStatusNotification(input) {
   const shortId = String(request_id).slice(-6);
 
   if (cfg.client && request.client_email) {
-    const body = `
-        <p>Bonjour <strong>${request.client_name || 'Client'}</strong>,</p>
-        <p>Le statut de votre demande de prestation avec <strong>${request.provider_name || 'le prestataire'}</strong> vient d'être mis à jour :</p>
-        <div style="background: #f0f4ff; border-left: 4px solid #3d4263; padding: 14px 18px; border-radius: 8px; margin: 20px 0;">
-          <strong style="font-size: 16px;">${cfg.emoji} ${cfg.label}</strong>
-        </div>
-        <p style="color: #666; font-size: 13px;">Connectez-vous à votre espace client pour plus de détails.</p>
-      `;
-    await sendMail({
-      to: request.client_email,
-      subject: `[By Excellence] ${title} — demande #${shortId}`,
-      html: emailTemplate(
-        title,
-        body,
-        `${appUrl}/ClientRequestDetail?id=${request_id}`,
-        'Voir ma demande'
-      ),
-    });
-    emailsSent.push({ role: 'client', email: request.client_email });
+    const clientWantsEmail = await emailWantsEmail(request.client_email, `status.${new_status}`);
+    if (clientWantsEmail) {
+      const body = `
+          <p>Bonjour <strong>${request.client_name || 'Client'}</strong>,</p>
+          <p>Le statut de votre demande de prestation avec <strong>${request.provider_name || 'le prestataire'}</strong> vient d'être mis à jour :</p>
+          <div style="background: #f0f4ff; border-left: 4px solid #3d4263; padding: 14px 18px; border-radius: 8px; margin: 20px 0;">
+            <strong style="font-size: 16px;">${cfg.emoji} ${cfg.label}</strong>
+          </div>
+          <p style="color: #666; font-size: 13px;">Connectez-vous à votre espace client pour plus de détails.</p>
+        `;
+      await sendMail({
+        to: request.client_email,
+        subject: `[By Excellence] ${title} — demande #${shortId}`,
+        html: emailTemplate(
+          title,
+          body,
+          `${appUrl}/ClientRequestDetail?id=${request_id}`,
+          'Voir ma demande'
+        ),
+      });
+      emailsSent.push({ role: 'client', email: request.client_email });
+    }
   }
 
-  if (cfg.provider && providerEmail) {
+  if (cfg.provider && providerEmail && wantsEmail(providerUser, `status.${new_status}`)) {
     const body = `
         <p>Bonjour,</p>
         <p>La demande de <strong>${request.client_name || 'votre client'}</strong> a un nouveau statut :</p>
@@ -143,4 +148,4 @@ async function sendStatusNotification(input) {
   return { ok: true, success: true, emails_sent: emailsSent };
 }
 
-module.exports = { sendStatusNotification, STATUS_CONFIG };
+module.exports = { sendStatusNotification, STATUS_CONFIG, emailTemplate };
