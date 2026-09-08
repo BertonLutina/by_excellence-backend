@@ -5,6 +5,7 @@ const { coercePortfolioImages, bindJsonDocument } = require('../utils/portfolioI
 const TABLE = 'providers';
 const COLUMNS = [
   'id', 'user_id', 'display_name', 'profession', 'bio', 'photo_url', 'banner_url', 'city', 'lat', 'lng', 'category_id',
+  'activity_type', 'suggested_category_name', 'suggested_category_type',
   'price_from', 'provider_tier', 'premium_commission_percent', 'portfolio_images', 'is_verified', 'rating', 'review_count', 'status', 'company_name', 'structure_type', 'worker_count', 'siret', 'vat_number',
   'legal_address', 'coords', 'insurance_certificate', 'video_url',
   'website_url', 'facebook_url', 'instagram_url', 'tiktok_url', 'linkedin_url',
@@ -25,6 +26,9 @@ class Provider extends BaseModel {
     this.lat = body?.lat;
     this.lng = body?.lng;
     this.category_id = body?.category_id;
+    this.activity_type = body?.activity_type;
+    this.suggested_category_name = body?.suggested_category_name;
+    this.suggested_category_type = body?.suggested_category_type;
     this.price_from = body?.price_from;
     this.provider_tier = body?.provider_tier;
     this.premium_commission_percent = body?.premium_commission_percent;
