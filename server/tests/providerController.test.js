@@ -100,6 +100,36 @@ test('create provider sets correct tier from price_from', async () => {
   assert.equal(capturedPayload.worker_count, 1);
 });
 
+test('create provider normalizes provider activity proposal fields', async () => {
+  const originalCreate = Provider.create;
+  let capturedPayload = null;
+  Provider.create = async (payload) => {
+    capturedPayload = payload;
+    return { id: 3, ...payload };
+  };
+
+  const req = {
+    body: {
+      display_name: 'P2',
+      activity_type: 'goods',
+      suggested_category_name: `  ${'A'.repeat(160)}  `,
+      suggested_category_type: 'unknown',
+    },
+  };
+  const res = createMockRes();
+
+  try {
+    await controller.create(req, res);
+  } finally {
+    Provider.create = originalCreate;
+  }
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(capturedPayload.activity_type, 'goods');
+  assert.equal(capturedPayload.suggested_category_name, 'A'.repeat(150));
+  assert.equal(capturedPayload.suggested_category_type, 'service');
+});
+
 test('update price_from updates tier', async () => {
   const originalUpdate = Provider.update;
   const originalFindById = Provider.findById;
@@ -126,6 +156,45 @@ test('update price_from updates tier', async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(capturedUpdatePayload.provider_tier, 'premium');
   assert.equal(res.body.provider_tier, 'premium');
+});
+
+test('update provider coerces unknown activity type to service', async () => {
+  const originalUpdate = Provider.update;
+  const originalFindById = Provider.findById;
+  let capturedUpdatePayload = null;
+  Provider.findById = async () => ({
+    id: 10,
+    user_id: 5,
+    structure_type: 'solo',
+    worker_count: 1,
+  });
+  Provider.update = async (id, payload) => {
+    capturedUpdatePayload = payload;
+    return { id, ...payload };
+  };
+
+  const req = {
+    user: { id: 5, role: 'provider' },
+    params: { id: 10 },
+    body: {
+      activity_type: 'retail',
+      suggested_category_type: 'both',
+      suggested_category_name: ' Accessoires ',
+    },
+  };
+  const res = createMockRes();
+
+  try {
+    await controller.update(req, res);
+  } finally {
+    Provider.update = originalUpdate;
+    Provider.findById = originalFindById;
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedUpdatePayload.activity_type, 'service');
+  assert.equal(capturedUpdatePayload.suggested_category_type, 'both');
+  assert.equal(capturedUpdatePayload.suggested_category_name, 'Accessoires');
 });
 
 test('provider update rejects non-owner provider users', async () => {

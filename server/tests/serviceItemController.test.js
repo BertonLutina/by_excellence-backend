@@ -48,6 +48,65 @@ test('provider-created service items use the caller provider profile and preserv
   assert.equal(capturedPayload.item_type, 'good');
 });
 
+test('provider-created goods normalize stock, minimum order quantity and unit', async () => {
+  const originalFindByUserId = Provider.findByUserId;
+  const originalCreate = ServiceItem.create;
+  let capturedPayload = null;
+  Provider.findByUserId = async (userId) => ({ id: 22, user_id: userId });
+  ServiceItem.create = async (payload) => {
+    capturedPayload = payload;
+    return { id: 8, ...payload };
+  };
+
+  const req = {
+    user: { id: 5, role: 'provider' },
+    body: {
+      item_type: 'good',
+      title: 'Pack ceremonie',
+      stock_quantity: '12pieces',
+      min_order_quantity: '-3',
+      unit: `  ${'c'.repeat(55)}  `,
+    },
+  };
+  const res = createMockRes();
+
+  try {
+    await controller.create(req, res);
+  } finally {
+    Provider.findByUserId = originalFindByUserId;
+    ServiceItem.create = originalCreate;
+  }
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(capturedPayload.stock_quantity, 12);
+  assert.equal(capturedPayload.min_order_quantity, null);
+  assert.equal(capturedPayload.unit, 'c'.repeat(50));
+});
+
+test('client cannot create a good service item', async () => {
+  const originalCreate = ServiceItem.create;
+  let createCalled = false;
+  ServiceItem.create = async () => {
+    createCalled = true;
+    return { id: 9 };
+  };
+
+  const req = {
+    user: { id: 6, role: 'client' },
+    body: { item_type: 'good', title: 'Caisse de jus' },
+  };
+  const res = createMockRes();
+
+  try {
+    await controller.create(req, res);
+  } finally {
+    ServiceItem.create = originalCreate;
+  }
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(createCalled, false);
+});
+
 test('provider cannot update another provider service item', async () => {
   const originalFindByUserId = Provider.findByUserId;
   const originalFindById = ServiceItem.findById;

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 
 const categoryController = require('../controllers/serviceCategoryController');
+const ServiceCategory = require('../models/ServiceCategory');
 
 function tokenFor(user) {
   return jwt.sign(user, process.env.JWT_SECRET);
@@ -79,4 +80,26 @@ test('service category writes require admin while public reads stay public', asy
     categoryController.getAll = originalGetAll;
     categoryController.create = originalCreate;
   }
+});
+
+test('service category list passes is_active through existing filters', async () => {
+  const originalFindAll = ServiceCategory.findAll;
+  let capturedOpts = null;
+  ServiceCategory.findAll = async (opts) => {
+    capturedOpts = opts;
+    return [{ id: 1, name: 'Boissons', is_active: 1 }];
+  };
+
+  const req = { query: { is_active: '1', category_type: 'goods', ignored_field: 'x' } };
+  const res = createMockRes();
+
+  try {
+    await categoryController.getAll(req, res);
+  } finally {
+    ServiceCategory.findAll = originalFindAll;
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedOpts.filters.is_active, '1');
+  assert.equal(capturedOpts.filters.category_type, 'goods');
 });

@@ -2,6 +2,9 @@ const ServiceItem = require('../models/ServiceItem');
 const Provider = require('../models/Provider');
 const { getStripe } = require('../utils/stripeClient');
 
+const ITEM_TYPES = new Set(['service', 'package', 'good']);
+const GOODS_QUANTITY_FIELDS = ['stock_quantity', 'min_order_quantity'];
+
 async function syncStripeProduct(item) {
   const stripe = getStripe();
   if (!stripe || !item.title || !(Number(item.price) > 0)) return {};
@@ -87,7 +90,7 @@ function toModelPayload(body = {}, req, forcedProviderId = null) {
   if (out.name != null && out.title == null) out.title = out.name;
   if (out.title != null) out.title = String(out.title).trim();
 
-  if (!['service', 'package', 'good'].includes(out.item_type)) out.item_type = 'package';
+  if (!ITEM_TYPES.has(out.item_type)) out.item_type = 'package';
 
   if (Object.prototype.hasOwnProperty.call(out, 'includes')) {
     out.includes = JSON.stringify(parseIncludes(out.includes));
@@ -102,6 +105,15 @@ function toModelPayload(body = {}, req, forcedProviderId = null) {
     const n = parseInt(out.order, 10);
     if (Number.isFinite(n)) out.order = n;
   }
+
+  for (const key of GOODS_QUANTITY_FIELDS) {
+    if (out[key] != null && out[key] !== '') {
+      const n = parseInt(out[key], 10);
+      out[key] = Number.isFinite(n) && n >= 0 ? n : null;
+    }
+  }
+
+  if (out.unit != null) out.unit = String(out.unit).trim().slice(0, 50);
 
   if (out.is_active === undefined) out.is_active = 1;
   if (out.created_by === undefined && req?.user?.id != null) out.created_by = req.user.id;

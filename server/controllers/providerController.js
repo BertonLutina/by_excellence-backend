@@ -8,6 +8,8 @@ const {
 } = require('../utils/providerTier');
 const { isValidPremiumCommissionPercent } = require('../utils/commission');
 
+const ACTIVITY_TYPES = new Set(['service', 'goods', 'both']);
+
 function parseTierFilter(rawTier) {
   if (rawTier === undefined) return { ok: true, value: undefined };
   if (rawTier === null || rawTier === '') return { ok: true, value: null };
@@ -40,6 +42,20 @@ function normalizeProviderPayload(body = {}, req = null) {
 
   if (Object.prototype.hasOwnProperty.call(data, 'price_from')) {
     data.provider_tier = computeProviderTier(data.price_from);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'activity_type')) {
+    data.activity_type = ACTIVITY_TYPES.has(data.activity_type) ? data.activity_type : 'service';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'suggested_category_type')) {
+    data.suggested_category_type = ACTIVITY_TYPES.has(data.suggested_category_type)
+      ? data.suggested_category_type
+      : 'service';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'suggested_category_name') && data.suggested_category_name != null) {
+    data.suggested_category_name = String(data.suggested_category_name).trim().slice(0, 150);
   }
 
   delete data.structure_type;
