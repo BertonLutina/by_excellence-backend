@@ -115,7 +115,7 @@ test('update price_from updates tier', async () => {
     return { id, ...payload };
   };
 
-  const req = { params: { id: 10 }, body: { price_from: 1500 } };
+  const req = { user: { id: 1, role: 'admin' }, params: { id: 10 }, body: { price_from: 1500 } };
   const res = createMockRes();
 
   await controller.update(req, res);
@@ -128,6 +128,62 @@ test('update price_from updates tier', async () => {
   assert.equal(res.body.provider_tier, 'premium');
 });
 
+test('provider update rejects non-owner provider users', async () => {
+  const originalUpdate = Provider.update;
+  const originalFindById = Provider.findById;
+  let updateCalled = false;
+  Provider.findById = async () => ({
+    id: 10,
+    user_id: 99,
+    structure_type: 'solo',
+    worker_count: 1,
+  });
+  Provider.update = async () => {
+    updateCalled = true;
+    return { id: 10 };
+  };
+
+  const req = { user: { id: 5, role: 'provider' }, params: { id: 10 }, body: { display_name: 'Nope' } };
+  const res = createMockRes();
+
+  try {
+    await controller.update(req, res);
+  } finally {
+    Provider.update = originalUpdate;
+    Provider.findById = originalFindById;
+  }
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(updateCalled, false);
+});
+
+test('provider delete rejects non-owner provider users', async () => {
+  const originalDelete = Provider.delete;
+  const originalFindById = Provider.findById;
+  let deleteCalled = false;
+  Provider.findById = async () => ({
+    id: 10,
+    user_id: 99,
+  });
+  Provider.delete = async () => {
+    deleteCalled = true;
+    return { id: 10 };
+  };
+
+  const req = { user: { id: 5, role: 'provider' }, params: { id: 10 } };
+  const res = createMockRes();
+
+  try {
+    await controller.remove(req, res);
+  } finally {
+    Provider.delete = originalDelete;
+    Provider.findById = originalFindById;
+  }
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(deleteCalled, false);
+});
+
 test('invalid provider_tier in body returns 400', async () => {
   const req = { body: { price_from: 1500, provider_tier: 'vip' } };
   const res = createMockRes();
@@ -137,4 +193,3 @@ test('invalid provider_tier in body returns 400', async () => {
   assert.equal(res.statusCode, 400);
   assert.match(res.body.error, /Invalid provider_tier/i);
 });
-

@@ -1,4 +1,5 @@
 const ServiceItem = require('../models/ServiceItem');
+const Provider = require('../models/Provider');
 const { getStripe } = require('../utils/stripeClient');
 
 async function syncStripeProduct(item) {
@@ -68,13 +69,25 @@ function serialize(row) {
   };
 }
 
-function toModelPayload(body = {}, req) {
+async function currentProviderId(req) {
+  if (req?.user?.role !== 'provider') return null;
+  const provider = await Provider.findByUserId(req.user.id);
+  return provider?.id == null ? null : Number(provider.id);
+}
+
+function canManageServiceItem(user, item, providerId) {
+  if (user?.role === 'admin') return true;
+  if (user?.role !== 'provider') return false;
+  return providerId != null && Number(item?.provider_id) === Number(providerId);
+}
+
+function toModelPayload(body = {}, req, forcedProviderId = null) {
   const out = { ...body };
 
   if (out.name != null && out.title == null) out.title = out.name;
   if (out.title != null) out.title = String(out.title).trim();
 
-  if (out.item_type !== 'service') out.item_type = 'package';
+  if (!['service', 'package', 'good'].includes(out.item_type)) out.item_type = 'package';
 
   if (Object.prototype.hasOwnProperty.call(out, 'includes')) {
     out.includes = JSON.stringify(parseIncludes(out.includes));
@@ -92,6 +105,7 @@ function toModelPayload(body = {}, req) {
 
   if (out.is_active === undefined) out.is_active = 1;
   if (out.created_by === undefined && req?.user?.id != null) out.created_by = req.user.id;
+  if (forcedProviderId != null) out.provider_id = forcedProviderId;
 
   delete out.name;
   return out;
@@ -121,7 +135,14 @@ module.exports = {
 
   create: async (req, res) => {
     try {
-      const payload = toModelPayload(req.body, req);
+      if (req.user?.role !== 'admin' && req.user?.role !== 'provider') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const providerId = await currentProviderId(req);
+      if (req.user?.role === 'provider' && providerId == null) {
+        return res.status(403).json({ error: 'Provider profile required' });
+      }
+      const payload = toModelPayload(req.body, req, providerId);
       const row = await ServiceItem.create(payload);
 
       // Sync to Stripe after creation (non-blocking on failure)
@@ -139,7 +160,14 @@ module.exports = {
 
   update: async (req, res) => {
     try {
+      const existing = await ServiceItem.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      const providerId = await currentProviderId(req);
+      if (!canManageServiceItem(req.user, existing, providerId)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
       const payload = toModelPayload(req.body, req);
+      if (req.user?.role === 'provider') delete payload.provider_id;
       const row = await ServiceItem.update(req.params.id, payload);
       if (!row) return res.status(404).json({ error: 'Not found' });
 
@@ -159,6 +187,11 @@ module.exports = {
   remove: async (req, res) => {
     try {
       const existing = await ServiceItem.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      const providerId = await currentProviderId(req);
+      if (!canManageServiceItem(req.user, existing, providerId)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
       if (existing?.stripe_product_id) {
         const stripe = getStripe();
         if (stripe) {

@@ -48,6 +48,12 @@ function normalizeProviderPayload(body = {}, req = null) {
   return { ok: true, data };
 }
 
+function canManageProvider(user, provider) {
+  if (user?.role === 'admin') return true;
+  if (user?.role !== 'provider') return false;
+  return provider?.user_id != null && Number(provider.user_id) === Number(user.id);
+}
+
 /** Solo (1 person) vs team; worker_count is headcount on the job (1 solo, ≥2 team). */
 function normalizeStructureForWrite(body = {}, existingRow = null) {
   const hasSt = Object.prototype.hasOwnProperty.call(body, 'structure_type');
@@ -173,6 +179,7 @@ module.exports = {
     try {
       const existing = await Provider.findById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Not found' });
+      if (!canManageProvider(req.user, existing)) return res.status(403).json({ error: 'Forbidden' });
 
       const normalized = normalizeProviderPayload(req.body, req);
       if (!normalized.ok) return res.status(normalized.status || 400).json({ error: normalized.message });
@@ -229,6 +236,9 @@ module.exports = {
 
     remove: async (req, res) => {
     try {
+      const existing = await Provider.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      if (!canManageProvider(req.user, existing)) return res.status(403).json({ error: 'Forbidden' });
       await Provider.delete(req.params.id);
       return res.json({ success: true, id: req.params.id });
     } catch (err) {
