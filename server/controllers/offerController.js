@@ -86,7 +86,7 @@ module.exports = {
         }
       }
       const providerId = body.provider_id ?? before.provider_id;
-      if (body.items != null || body.commission_mode != null || body.deposit_percentage != null) {
+      if (body.items != null || body.commission_mode != null || body.deposit_percentage != null || body.payment_flow != null) {
         body = await prepareOfferBody({
           ...before,
           ...body,

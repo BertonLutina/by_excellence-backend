@@ -23,7 +23,7 @@ async function updateServiceRequestStatusAfterPayment(payment, request, { fromWe
   if (payment.type === 'deposit') {
     newStatus = 'deposit_paid';
     await ServiceRequest.update(rid, { status: newStatus });
-  } else if (payment.type === 'final') {
+  } else if (payment.type === 'final' || payment.type === 'goods_full') {
     newStatus = 'completed';
     await ServiceRequest.update(rid, { status: newStatus });
   } else if (payment.type === 'installment') {

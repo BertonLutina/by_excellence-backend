@@ -28,6 +28,7 @@ const MIGRATIONS = [
   { table: 'service_requests', column: 'selected_items', ddl: 'selected_items JSON NULL AFTER combo_payload' },
   { table: 'service_requests', column: 'is_open_request', ddl: 'is_open_request BOOLEAN NOT NULL DEFAULT FALSE AFTER is_combo' },
   { table: 'offers', column: 'commission_mode', ddl: "commission_mode ENUM('included','on_top') NOT NULL DEFAULT 'included' AFTER deposit_percentage" },
+  { table: 'offers', column: 'payment_flow', ddl: "payment_flow ENUM('deposit_flow','direct_full_payment') NOT NULL DEFAULT 'deposit_flow' AFTER commission_mode" },
   { table: 'users', column: 'email_notifications', ddl: 'email_notifications JSON NULL AFTER is_email_verified' },
   { table: 'service_categories', column: 'category_type', ddl: "category_type ENUM('service','goods','both') NOT NULL DEFAULT 'service' AFTER image_url" },
   { table: 'service_categories', column: 'is_active', ddl: 'is_active BOOLEAN NOT NULL DEFAULT TRUE AFTER category_type' },

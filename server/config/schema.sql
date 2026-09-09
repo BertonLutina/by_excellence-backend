@@ -257,6 +257,8 @@ CREATE TABLE offers (
     total_amount DECIMAL(10,2) NOT NULL,
     deposit_amount DECIMAL(10,2),
     deposit_percentage DECIMAL(5,2),
+    commission_mode ENUM('included','on_top') NOT NULL DEFAULT 'included',
+    payment_flow ENUM('deposit_flow','direct_full_payment') NOT NULL DEFAULT 'deposit_flow',
     conditions TEXT,
     valid_until DATE,
     status ENUM('draft','sent_to_admin','sent_to_client','accepted','rejected','expired') DEFAULT 'draft',
@@ -466,11 +468,11 @@ BEGIN
     END IF;
 END$$
 
--- Final payment paid -> update ServiceRequest to completed
+-- Final or goods full payment paid -> update ServiceRequest to completed
 CREATE TRIGGER trg_final_paid_complete_request AFTER UPDATE ON payments
 FOR EACH ROW
 BEGIN
-    IF NEW.status = 'paid' AND OLD.status != 'paid' AND NEW.type='final' THEN
+    IF NEW.status = 'paid' AND OLD.status != 'paid' AND NEW.type IN ('final', 'goods_full') THEN
         UPDATE service_requests SET status='completed' WHERE id = NEW.request_id;
     END IF;
 END$$

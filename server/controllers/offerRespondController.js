@@ -65,19 +65,27 @@ exports.get = async (req, res) => {
       notifyOfferStatusChange(offerId, 'accepted').catch(() => {});
       notifyRequestStatusChange(offer.request_id, 'offer_accepted').catch(() => {});
 
-      const existingDeposit = await Payment.findAll({
-        filters: { request_id: offer.request_id, offer_id: offer.id, type: 'deposit' },
+      const paymentType = offer.payment_flow === 'direct_full_payment' ? 'goods_full' : 'deposit';
+      const paymentAmount = paymentType === 'goods_full'
+        ? Number(offer.total_amount || 0)
+        : Number(offer.deposit_amount || 0);
+      const existingPayment = await Payment.findAll({
+        filters: { request_id: offer.request_id, offer_id: offer.id, type: paymentType },
         limit: 5,
       });
-      if (existingDeposit.length === 0) {
+      if (existingPayment.length === 0) {
         await Payment.create({
           request_id: offer.request_id,
           offer_id: offer.id,
-          type: 'deposit',
-          amount: Number(offer.deposit_amount || 0),
+          type: paymentType,
+          amount: paymentAmount,
           status: 'pending',
         });
       }
+
+      const paymentInstructions = paymentType === 'goods_full'
+        ? 'Vous allez recevoir les instructions pour le paiement complet.'
+        : "Vous allez recevoir les instructions pour le paiement de l'acompte.";
 
       return res
         .status(200)
@@ -87,7 +95,7 @@ exports.get = async (req, res) => {
             'Offre acceptée',
             `<h1 class="success">✅ Offre acceptée !</h1>
             <p>Votre acceptation a été enregistrée avec succès.</p>
-            <p>Vous allez recevoir les instructions pour le paiement de l'acompte.</p>
+            <p>${paymentInstructions}</p>
             <a href="${detailUrl}" class="btn">Voir ma demande</a>`
           )
         );
