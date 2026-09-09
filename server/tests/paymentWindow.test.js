@@ -13,8 +13,7 @@ test('due_date is event_date minus 7 days', () => {
 });
 
 test('status open when now is between J-30 and J-7', () => {
-  const event = new Date();
-  event.setDate(event.getDate() + 15);
+  const event = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000 + 60 * 1000);
   const s = getPaymentWindowStatus(event);
   assert.equal(s.status, 'open');
   assert.equal(s.daysUntilEvent, 15);
@@ -41,15 +40,13 @@ test('status no_date when event date is null', () => {
 });
 
 test('status open at exactly J-30 (window opens that day)', () => {
-  const event = new Date();
-  event.setDate(event.getDate() + 30);
+  const event = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000 + 60 * 1000);
   const s = getPaymentWindowStatus(event);
   assert.equal(s.status, 'open');
 });
 
 test('status open at exactly J-7 (last valid payment day)', () => {
-  const event = new Date();
-  event.setDate(event.getDate() + 7);
+  const event = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 60 * 1000);
   const s = getPaymentWindowStatus(event);
   assert.equal(s.status, 'open');
 });
