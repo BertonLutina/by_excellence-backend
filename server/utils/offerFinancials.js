@@ -40,9 +40,10 @@ function computeOfferFinancials(items, commissionMode = 'included', commissionRa
 }
 
 function lineAmount(item) {
-  const unit = item?.unit_price != null ? Number(item.unit_price) : Number(item?.price);
+  const unit = item?.item_type === 'good' && item?.unit_price != null ? Number(item.unit_price) : Number(item?.price);
   const quantity = Math.max(1, Number(item?.quantity) || 1);
-  return (Number.isFinite(unit) ? unit : 0) * quantity;
+  const amount = item?.item_type === 'good' ? unit * quantity : unit;
+  return Number.isFinite(amount) ? amount : 0;
 }
 
 function normalizeCommissionMode(mode) {

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { applyOfferFinancials } = require('../utils/offerFinancials');
+const { applyOfferFinancials, computeOfferFinancials } = require('../utils/offerFinancials');
 
 function createMockRes() {
   return {
@@ -80,6 +80,22 @@ test('goods-only offer financials use direct full payment flow', () => {
   assert.equal(out.payment_flow, 'direct_full_payment');
   assert.equal(out.total_amount, 200);
   assert.equal(out.deposit_amount, 60);
+});
+
+test('offer financials use edited service price but catalog quantity for goods', () => {
+  const service = computeOfferFinancials(
+    [{ item_type: 'service', price: 120, unit_price: 80, quantity: 2 }],
+    'included',
+    15
+  );
+  const good = computeOfferFinancials(
+    [{ item_type: 'good', price: 120, unit_price: 80, quantity: 2 }],
+    'included',
+    15
+  );
+
+  assert.equal(service.subtotal, 120);
+  assert.equal(good.subtotal, 160);
 });
 
 test('service and mixed offer financials keep deposit payment flow', () => {
