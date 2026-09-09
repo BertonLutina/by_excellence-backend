@@ -65,6 +65,53 @@ async function getAudienceUserIds(row) {
 module.exports = {
   ...base,
 
+  // Read a single message with the same visibility rules as getAll
+  // (anti-IDOR): the generic CRUD getOne let any authenticated account read
+  // any message by id, outside of its own conversation.
+  //   admin    -> anything
+  //   client   -> request-level messages (offer_id IS NULL) of their own request
+  //   provider -> offer-level messages of offers tied to them
+  getOne: async (req, res) => {
+    try {
+      const row = await Message.findById(req.params.id);
+      if (!row) return res.status(404).json({ error: 'Not found' });
+
+      const role = req.user?.role;
+      const userId = req.user?.id ? Number(req.user.id) : null;
+      if (role !== 'admin') {
+        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+        // The sender may always re-read their own message.
+        if (row.sender_id == null || Number(row.sender_id) !== userId) {
+          if (row.offer_id != null) {
+            // Offer-scoped chat: admin/provider only, and the provider must own the offer.
+            if (role !== 'provider') return res.status(403).json({ error: 'Forbidden' });
+            const offer = await Offer.findById(row.offer_id);
+            if (!offer) return res.status(403).json({ error: 'Forbidden' });
+            const providerRows = await executeSQL(
+              'SELECT user_id FROM providers WHERE id = ?',
+              [offer.provider_id]
+            );
+            const ownerUid = (Array.isArray(providerRows) ? providerRows[0] : providerRows)?.user_id;
+            if (!ownerUid || Number(ownerUid) !== userId) {
+              return res.status(403).json({ error: 'Forbidden' });
+            }
+          } else {
+            // Request-scoped chat: client (owner) <-> admin only.
+            if (role === 'provider') return res.status(403).json({ error: 'Forbidden' });
+            const sr = await ServiceRequest.findById(row.request_id);
+            if (!(await isRequestClient(sr, userId))) {
+              return res.status(403).json({ error: 'Forbidden' });
+            }
+          }
+        }
+      }
+
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
   // List messages with hard role-based visibility:
   //   admin    → can see anything they query (request_id or offer_id)
   //   client   → only request-level messages of their own request (offer_id IS NULL)

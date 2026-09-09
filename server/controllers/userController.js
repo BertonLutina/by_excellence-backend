@@ -12,6 +12,12 @@ exports.list = async (req, res) => {
 
 exports.getOne = async (req, res) => {
   try {
+    // Object-level authorization (anti-IDOR): this endpoint had no ownership
+    // check, so any authenticated account could read any user's profile.
+    const isSelf = String(req.user?.id) === String(req.params.id);
+    if (!isSelf && req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);

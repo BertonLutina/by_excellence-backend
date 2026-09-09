@@ -16,7 +16,7 @@ const candidateEnvPaths = [
   path.join(process.cwd(), 'server', '.env'),
   path.join(process.cwd(), 'server', `.env.${runtimeNodeEnv}`),
   '/srv/data/web/vhosts/default/.env',
-  '/lamp0/web/hosts/default/.env',
+  '/lamp0/web/vhosts/default/.env',
 ];
 
 for (const p of candidateEnvPaths) {
@@ -72,7 +72,11 @@ if (!DB_SOCKET_PATH && !DB_HOST && IS_GANDI_HOSTING) {
 
 const UPLOAD_DIR =
   process.env.UPLOAD_DIR ||
-  (IS_DEV ? path.join(process.cwd(), 'uploads') : '/srv/data/web/vhosts/default/uploads');
+  (IS_DEV
+    ? path.join(process.cwd(), 'uploads')
+    : cwd.startsWith('/lamp0/web')
+      ? '/lamp0/web/vhosts/default/uploads'
+      : '/srv/data/web/vhosts/default/uploads');
 
 module.exports = {
   IS_GANDI_HOSTING,
@@ -89,6 +93,7 @@ module.exports = {
   API_BASE_URL,
   FRONTEND_ORIGIN,
   CORS_ORIGINS: process.env.CORS_ORIGINS || '',
+  ALLOW_LOCAL_DEV_CORS: bool(process.env.ALLOW_LOCAL_DEV_CORS, !IS_PROD),
 
   JWT_SECRET: process.env.JWT_SECRET || '',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
@@ -136,6 +141,14 @@ module.exports = {
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
   /**
+   * Signing secret for the SEPARATE "Comptes connectés" (Connect) webhook
+   * destination — POST /api/stripe/webhook/connect. Stripe's Workbench UI
+   * requires two distinct destinations (and therefore two distinct secrets)
+   * for "Votre compte" vs "Comptes connectés" event scopes; STRIPE_WEBHOOK_SECRET
+   * alone cannot verify both.
+   */
+  STRIPE_CONNECT_WEBHOOK_SECRET: process.env.STRIPE_CONNECT_WEBHOOK_SECRET || '',
+  /**
    * Opt-in instant-pay mode (skips Stripe and marks payments paid immediately).
    * Useful for local testing without Stripe configured. By default, sandbox keys
    * (`sk_test_*`) hit the real Stripe sandbox.
@@ -148,4 +161,11 @@ module.exports = {
   STRIPE_ELEMENTS_RETURN_PATH: (process.env.STRIPE_ELEMENTS_RETURN_PATH || '/#/stripecheckoutcomplete').trim(),
   /** Requires Stripe Tax setup on the account */
   STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX: bool(process.env.STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX, false),
+
+  /** Stripe Connect (provider payouts) — country the Express accounts are created in. */
+  STRIPE_CONNECT_COUNTRY: (process.env.STRIPE_CONNECT_COUNTRY || 'FR').trim().toUpperCase(),
+  /** Path on FRONTEND_ORIGIN Stripe redirects to if the onboarding link expired/was abandoned. */
+  STRIPE_CONNECT_REFRESH_PATH: (process.env.STRIPE_CONNECT_REFRESH_PATH || '/#/providersettings?stripe=refresh').trim(),
+  /** Path on FRONTEND_ORIGIN Stripe redirects to once onboarding is submitted (not necessarily verified yet). */
+  STRIPE_CONNECT_RETURN_PATH: (process.env.STRIPE_CONNECT_RETURN_PATH || '/#/providersettings?stripe=return').trim(),
 };

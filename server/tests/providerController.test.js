@@ -106,6 +106,7 @@ test('update price_from updates tier', async () => {
   let capturedUpdatePayload = null;
   Provider.findById = async () => ({
     id: 10,
+    user_id: 7,
     price_from: 500,
     structure_type: 'solo',
     worker_count: 1,
@@ -115,7 +116,7 @@ test('update price_from updates tier', async () => {
     return { id, ...payload };
   };
 
-  const req = { params: { id: 10 }, body: { price_from: 1500 } };
+  const req = { params: { id: 10 }, body: { price_from: 1500 }, user: { id: 7, role: 'provider' } };
   const res = createMockRes();
 
   await controller.update(req, res);
@@ -136,5 +137,96 @@ test('invalid provider_tier in body returns 400', async () => {
 
   assert.equal(res.statusCode, 400);
   assert.match(res.body.error, /Invalid provider_tier/i);
+});
+
+test('update rejects a non-owner, non-admin caller (IDOR guard)', async () => {
+  const originalFindById = Provider.findById;
+  const originalUpdate = Provider.update;
+  let updateCalled = false;
+  Provider.findById = async () => ({ id: 10, user_id: 7 });
+  Provider.update = async () => { updateCalled = true; };
+
+  const req = { params: { id: 10 }, body: { bio: 'hacked' }, user: { id: 999, role: 'provider' } };
+  const res = createMockRes();
+
+  await controller.update(req, res);
+
+  Provider.findById = originalFindById;
+  Provider.update = originalUpdate;
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(updateCalled, false);
+});
+
+test('update allows an admin to edit any provider', async () => {
+  const originalFindById = Provider.findById;
+  const originalUpdate = Provider.update;
+  Provider.findById = async () => ({ id: 10, user_id: 7 });
+  Provider.update = async (id, payload) => ({ id, ...payload });
+
+  const req = { params: { id: 10 }, body: { bio: 'edited by admin' }, user: { id: 1, role: 'admin' } };
+  const res = createMockRes();
+
+  await controller.update(req, res);
+
+  Provider.findById = originalFindById;
+  Provider.update = originalUpdate;
+
+  assert.equal(res.statusCode, 200);
+});
+
+test('update strips stripe connect fields from the request body (mass-assignment guard)', async () => {
+  const originalFindById = Provider.findById;
+  const originalUpdate = Provider.update;
+  let capturedPayload = null;
+  Provider.findById = async () => ({ id: 10, user_id: 7 });
+  Provider.update = async (id, payload) => {
+    capturedPayload = payload;
+    return { id, ...payload };
+  };
+
+  const req = {
+    params: { id: 10 },
+    body: { bio: 'hi', stripe_account_id: 'acct_attacker', stripe_payouts_enabled: 1 },
+    user: { id: 7, role: 'provider' },
+  };
+  const res = createMockRes();
+
+  await controller.update(req, res);
+
+  Provider.findById = originalFindById;
+  Provider.update = originalUpdate;
+
+  assert.equal(res.statusCode, 200);
+  assert.equal('stripe_account_id' in capturedPayload, false);
+  assert.equal('stripe_payouts_enabled' in capturedPayload, false);
+});
+
+test('create rejects setting user_id to someone else when not admin', async () => {
+  const req = { body: { display_name: 'P1', user_id: 999 }, user: { id: 1, role: 'provider' } };
+  const res = createMockRes();
+
+  await controller.create(req, res);
+
+  assert.equal(res.statusCode, 403);
+});
+
+test('create forces user_id to the caller for non-admins', async () => {
+  const originalCreate = Provider.create;
+  let capturedPayload = null;
+  Provider.create = async (payload) => {
+    capturedPayload = payload;
+    return { id: 2, ...payload };
+  };
+
+  const req = { body: { display_name: 'P1' }, user: { id: 42, role: 'provider' } };
+  const res = createMockRes();
+
+  await controller.create(req, res);
+
+  Provider.create = originalCreate;
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(capturedPayload.user_id, 42);
 });
 

@@ -5,7 +5,7 @@ const multer = require('multer');
 const { authenticate } = require('../middleware/auth');
 const uploadLimiter = require('../middleware/uploadRateLimit');
 const ctrl = require('../controllers/uploadController');
-const { MAX_UPLOAD_MB } = require('../../constants/constant');
+const { MAX_UPLOAD_MB, IS_PROD } = require('../../constants/constant');
 
 const maxBytes = Math.max(1, MAX_UPLOAD_MB) * 1024 * 1024;
 
@@ -42,7 +42,7 @@ function handleMulter(req, res, next) {
       }
       return next(err);
     }
-    if (req.file) {
+    if (req.file && !IS_PROD) {
       console.log('[upload] multer saved file:', req.file.filename, '→', req.file.path, `(${req.file.size} bytes)`);
     }
     next();

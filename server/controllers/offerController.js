@@ -29,8 +29,77 @@ async function prepareOfferBody(body) {
   return applyOfferFinancials(body, provider);
 }
 
+/** Filters a non-admin may pass to the list endpoint. */
+const LIST_FILTERS = ['request_id', 'provider_id', 'status'];
+
 module.exports = {
   ...base,
+
+  /**
+   * List offers scoped to the caller (anti-IDOR). The generic CRUD getAll
+   * served every offer of the platform (amounts, margins, clients) to any
+   * authenticated account.
+   *   admin    -> unrestricted (base behavior)
+   *   provider -> only offers of their own provider profile
+   *   client   -> only offers attached to their own service requests
+   */
+  getAll: async (req, res) => {
+    try {
+      if (isAdmin(req.user)) return base.getAll(req, res);
+
+      const userId = req.user?.id != null ? Number(req.user.id) : null;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const conditions = [];
+      const values = [];
+      for (const key of LIST_FILTERS) {
+        const v = req.query[key];
+        if (v != null && v !== '') {
+          conditions.push(`o.\`${key}\` = ?`);
+          values.push(v);
+        }
+      }
+
+      if (req.user?.role === 'provider') {
+        const pid = await providerIdForUser(userId);
+        if (pid == null) return res.json([]);
+        conditions.push('o.provider_id = ?');
+        values.push(pid);
+      } else {
+        // client (and any other role): own requests only. Legacy-safe client_id match.
+        conditions.push('(r.client_id = ? OR r.client_id IN (SELECT id FROM clients WHERE user_id = ?))');
+        values.push(userId, userId);
+      }
+
+      const where = `WHERE ${conditions.join(' AND ')}`;
+      const safeLimit = Number(req.query.limit) || 100;
+      const safeOffset = Number(req.query.offset) || 0;
+      const sql = `SELECT o.* FROM \`offers\` o
+        JOIN \`service_requests\` r ON o.request_id = r.id
+        ${where} ORDER BY o.\`created_at\` DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+      const rows = await executeSQL(sql, values);
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  // Object-level authorization (anti-IDOR): only the owning provider, the
+  // client of the request the offer answers, or an admin may read an offer.
+  getOne: async (req, res) => {
+    try {
+      const row = await Offer.findById(req.params.id);
+      if (!row) return res.status(404).json({ error: 'Not found' });
+      if (!isAdmin(req.user)) {
+        const allowed =
+          (await isOfferProvider(row, req.user?.id)) || (await isOfferClient(row, req.user?.id));
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+      }
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
 
   create: async (req, res) => {
     try {

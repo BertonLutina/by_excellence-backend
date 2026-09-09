@@ -17,8 +17,21 @@ function parseTierFilter(rawTier) {
   return { ok: true, value: rawTier };
 }
 
+// Stripe Connect fields are only ever written by server-side controllers
+// (stripeConnectController) or the account.updated webhook — never by client
+// request bodies. Stripping them here prevents mass-assignment: without this,
+// any authenticated caller who could reach this endpoint could rewrite a
+// provider's stripe_account_id and redirect their future payouts.
+const STRIPE_CONNECT_FIELDS = [
+  'stripe_account_id',
+  'stripe_connect_status',
+  'stripe_payouts_enabled',
+  'stripe_connect_requested_at',
+];
+
 function normalizeProviderPayload(body = {}, req = null) {
   const data = { ...body };
+  for (const field of STRIPE_CONNECT_FIELDS) delete data[field];
 
   if (Object.prototype.hasOwnProperty.call(data, 'premium_commission_percent')) {
     if (!req || req.user?.role !== 'admin') {
@@ -156,6 +169,17 @@ module.exports = {
 
   create: async (req, res) => {
     try {
+      // Prevent registering a provider profile under someone else's user_id.
+      // The signup form always sends the caller's own id; only admins may set
+      // a different one (e.g. back-office provider creation on someone's behalf).
+      const requestedUserId = req.body?.user_id;
+      if (req.user?.role !== 'admin') {
+        if (requestedUserId != null && String(requestedUserId) !== String(req.user?.id)) {
+          return res.status(403).json({ error: 'Cannot create a provider profile for another user' });
+        }
+        req.body.user_id = req.user?.id;
+      }
+
       const normalized = normalizeProviderPayload(req.body, req);
       if (!normalized.ok) return res.status(normalized.status || 400).json({ error: normalized.message });
 
@@ -173,6 +197,15 @@ module.exports = {
     try {
       const existing = await Provider.findById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      // IDOR guard: only the provider's own owner or an admin may edit this
+      // row. The generic PUT /:id endpoint previously had no ownership check
+      // at all — any authenticated user could edit any other provider's
+      // profile (siret, price_from, bank/legal fields, ...).
+      const isOwner = req.user?.id != null && String(existing.user_id) === String(req.user.id);
+      if (!isOwner && req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
 
       const normalized = normalizeProviderPayload(req.body, req);
       if (!normalized.ok) return res.status(normalized.status || 400).json({ error: normalized.message });
@@ -208,15 +241,23 @@ module.exports = {
 
   updateVerified: async (req, res) => {
     try {
-      let is_verified = req.body?.is_verified;
-      if (is_verified !== undefined && is_verified !== null) {
-        if (typeof is_verified !== 'number') {
-          return res.status(400).json({ error: "is_verified must be a number" });
-        }
-        is_verified = is_verified
-      }
-      else {
+      // Accept boolean (what the admin UI sends), 0/1 numbers, and the string
+      // forms ("1", "true", ...). The column is BOOLEAN/TINYINT(1), so we
+      // normalise everything to 0 / 1 before writing.
+      const raw = req.body?.is_verified;
+      let is_verified;
+      if (raw === undefined || raw === null) {
         is_verified = null;
+      } else if (typeof raw === 'boolean') {
+        is_verified = raw ? 1 : 0;
+      } else if (typeof raw === 'number' && (raw === 0 || raw === 1)) {
+        is_verified = raw;
+      } else if (raw === '1' || raw === 'true') {
+        is_verified = 1;
+      } else if (raw === '0' || raw === 'false') {
+        is_verified = 0;
+      } else {
+        return res.status(400).json({ error: 'is_verified must be a boolean (or 0/1)' });
       }
       const existing = await Provider.findById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -229,6 +270,18 @@ module.exports = {
 
     remove: async (req, res) => {
     try {
+      const existing = await Provider.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      // IDOR guard: same rule as update() above. The 02/07/2026 fix on update()
+      // was never propagated here — DELETE /providers/:id had no ownership
+      // check at all, so any authenticated account (a client, another
+      // provider) could delete any provider profile.
+      const isOwner = req.user?.id != null && String(existing.user_id) === String(req.user.id);
+      if (!isOwner && req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
       await Provider.delete(req.params.id);
       return res.json({ success: true, id: req.params.id });
     } catch (err) {

@@ -6,30 +6,10 @@ const {
   QUIET_LOGS,
   FRONTEND_ORIGIN,
   CORS_ORIGINS,
+  ALLOW_LOCAL_DEV_CORS,
   PORT,
 } = require('./constants/constant');
-
-const parseCorsOrigins = (str) =>
-  (str || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-/** Browser Origin for local Vite (5173) / local Node — allow even on Gandi so dev can hit prod API. */
-const LOCAL_DEV_ORIGIN =
-  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
-
-const corsOrigin = (origin, callback) => {
-  if (!origin) return callback(null, true);
-  if (LOCAL_DEV_ORIGIN.test(origin)) {
-    return callback(null, true);
-  }
-  const allowlist = new Set(
-    [FRONTEND_ORIGIN, ...parseCorsOrigins(CORS_ORIGINS)].filter(Boolean)
-  );
-  if (allowlist.has(origin)) return callback(null, true);
-  callback(null, false);
-};
+const { createCorsOriginChecker } = require('./server/utils/corsPolicy');
 
 const startupLogPath = '/tmp/byex-backend-startup.log';
 const trace = (msg) => {
@@ -44,10 +24,14 @@ process.stdout.on('error', (err) => {
 });
 
 
-
-if (!JWT_SECRET || JWT_SECRET.trim() === '') {
-  trace('JWT_SECRET missing from constants');
-  console.error('[API] JWT_SECRET is required. Set it in your .env (e.g. JWT_SECRET=your_super_secret_jwt_key_here)');
+const { validateJwtSecret, MIN_PRODUCTION_JWT_SECRET_LENGTH } = require('./server/utils/secretPolicy');
+const jwtSecretValidation = validateJwtSecret(JWT_SECRET, { isProd: IS_PROD });
+if (!jwtSecretValidation.ok) {
+  trace(`JWT_SECRET invalid: ${jwtSecretValidation.reason}`);
+  const hint = jwtSecretValidation.reason === 'too_short'
+    ? `JWT_SECRET must be at least ${MIN_PRODUCTION_JWT_SECRET_LENGTH} characters in production.`
+    : 'JWT_SECRET is required.';
+  console.error(`[API] ${hint} Set it in your Gandi environment variables.`);
   process.exit(1);
 }
 
@@ -60,6 +44,12 @@ const app = express();
 app.set('trust proxy', 1);
 const isProd = IS_PROD;
 const quietLogs = QUIET_LOGS;
+const corsOrigin = createCorsOriginChecker({
+  frontendOrigin: FRONTEND_ORIGIN,
+  corsOrigins: CORS_ORIGINS,
+  isProd,
+  allowLocalDevCors: ALLOW_LOCAL_DEV_CORS,
+});
 
 app.use(
   helmet({

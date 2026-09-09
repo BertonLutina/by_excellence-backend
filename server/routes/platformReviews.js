@@ -1,5 +1,4 @@
 const createEntityRouter = require('./createEntityRouter');
-const createEntityController = require('../controllers/createEntityController');
-const PlatformReview = require('../models/PlatformReview');
+const ctrl = require('../controllers/platformReviewController');
 
-module.exports = createEntityRouter(createEntityController(PlatformReview, 'PlatformReview'), { publicGet: true });
+module.exports = createEntityRouter(ctrl, { publicGet: true });

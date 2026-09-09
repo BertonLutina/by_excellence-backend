@@ -1,6 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { API_BASE_URL, APP_URL } = require('../../constants/constant');
+const { API_BASE_URL, APP_URL, IS_PROD } = require('../../constants/constant');
 
 /** Public URL path matches on-disk layout: public/uploads → /public/uploads/… */
 function buildPublicUploadUrl(req, filename) {
@@ -40,7 +40,7 @@ exports.upload = async (req, res) => {
   let savedPath;
   try {
     if (!req.file || !req.file.path) {
-      console.log('[upload] no file in request (field name must be "file")');
+      if (!IS_PROD) console.log('[upload] no file in request (field name must be "file")');
       logUpload('reject', { reason: 'missing_file' });
       return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -57,7 +57,7 @@ exports.upload = async (req, res) => {
     } catch (e) {
       await fs.unlink(savedPath).catch(() => {});
       if (e.code === 'UNSUPPORTED_MEDIA_TYPE') {
-        console.log('[upload] rejected (not allowed type):', originalname, savedPath);
+        if (!IS_PROD) console.log('[upload] rejected unsupported type');
         logUpload('reject', { reason: 'unsupported_type', bytes: size });
         return res.status(415).json({ error: 'Unsupported media type' });
       }
@@ -94,7 +94,7 @@ exports.upload = async (req, res) => {
       mime,
     });
 
-    console.log('[upload] OK — validated & stored:', finalFilename, '|', mime, '|', finalPath, '| url:', publicUrl);
+    if (!IS_PROD) console.log('[upload] OK — validated & stored:', finalFilename, '|', mime);
 
     return res.status(200).json({
       file_url: publicUrl,

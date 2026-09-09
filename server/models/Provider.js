@@ -9,6 +9,7 @@ const COLUMNS = [
   'legal_address', 'coords', 'insurance_certificate', 'video_url',
   'website_url', 'facebook_url', 'instagram_url', 'tiktok_url', 'linkedin_url',
   'access', 'status_verification', 'created_at', 'updated_date',
+  'stripe_account_id', 'stripe_connect_status', 'stripe_payouts_enabled', 'stripe_connect_requested_at',
 ];
 
 class Provider extends BaseModel {
@@ -55,6 +56,10 @@ class Provider extends BaseModel {
     this.status_verification = body?.status_verification;
     this.created_at = body?.created_at;
     this.updated_date = body?.updated_date;
+    this.stripe_account_id = body?.stripe_account_id;
+    this.stripe_connect_status = body?.stripe_connect_status;
+    this.stripe_payouts_enabled = body?.stripe_payouts_enabled;
+    this.stripe_connect_requested_at = body?.stripe_connect_requested_at;
   }
 }
 

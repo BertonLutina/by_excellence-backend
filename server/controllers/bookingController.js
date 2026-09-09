@@ -66,6 +66,22 @@ module.exports = {
       if (client_id != null) filters.client_id = Number(client_id);
       if (slot_date) filters.slot_date = slot_date;
       if (status) filters.status = status;
+
+      // Anti-IDOR: a non-admin only ever sees their own bookings, whatever
+      // provider_id / client_id they pass. Without this the list served every
+      // booking of the platform to any authenticated account.
+      if (!isAdmin(req.user)) {
+        const userId = req.user?.id != null ? Number(req.user.id) : null;
+        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+        if (req.user?.role === 'provider') {
+          const pid = await providerIdForUser(userId);
+          if (pid == null) return res.json([]);
+          filters.provider_id = pid;
+        } else {
+          filters.client_id = userId;
+        }
+      }
+
       const rows = await Booking.findAll({ filters, sort: 'slot_date', order: 'ASC', limit: Math.min(Number(limit) || 200, 500) });
       return res.json(rows);
     } catch (err) {
@@ -77,6 +93,8 @@ module.exports = {
     try {
       const row = await Booking.findById(req.params.id);
       if (!row) return res.status(404).json({ error: 'Not found' });
+      // Anti-IDOR: only the client, the provider of the booking, or an admin.
+      if (!(await isPartyOf(row, req.user))) return res.status(403).json({ error: 'Forbidden' });
       return res.json(row);
     } catch (err) {
       return res.status(500).json({ error: err.message });

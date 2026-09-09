@@ -1,5 +1,21 @@
 const ServiceItem = require('../models/ServiceItem');
 const { getStripe } = require('../utils/stripeClient');
+const { isAdmin, providerIdForUser } = require('../utils/entityAccess');
+
+/**
+ * Object-level authorization (anti-IDOR): only the owning provider (or an admin)
+ * may mutate a service item. Mutations trigger a Stripe product/price sync.
+ */
+async function assertProviderOwnsItem(req, row) {
+  if (!row) return false;
+  if (isAdmin(req.user)) return true;
+  if (req.user?.role !== 'provider') return false;
+  const pid = await providerIdForUser(req.user.id);
+  if (pid == null) return false;
+  if (row.provider_id != null) return Number(row.provider_id) === pid;
+  // Legacy rows carry no provider_id: fall back on the server-set creator.
+  return row.created_by != null && Number(row.created_by) === Number(req.user.id);
+}
 
 async function syncStripeProduct(item) {
   const stripe = getStripe();
@@ -121,7 +137,21 @@ module.exports = {
 
   create: async (req, res) => {
     try {
-      const payload = toModelPayload(req.body, req);
+      // Role + object-level guard (anti-IDOR): only a provider (for their own
+      // profile) or an admin may create a service item. `create` triggers a
+      // real Stripe product/price sync, so it must stay closed. `provider_id`
+      // from the body is ignored for providers and forced to the caller's
+      // profile (cf. offerController.create / providerAvailabilityController.create).
+      const body = { ...req.body };
+      if (!isAdmin(req.user)) {
+        if (req.user?.role !== 'provider') {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+        const pid = await providerIdForUser(req.user.id);
+        if (pid == null) return res.status(403).json({ error: 'Forbidden' });
+        body.provider_id = pid;
+      }
+      const payload = toModelPayload(body, req);
       const row = await ServiceItem.create(payload);
 
       // Sync to Stripe after creation (non-blocking on failure)
@@ -139,6 +169,11 @@ module.exports = {
 
   update: async (req, res) => {
     try {
+      const existing = await ServiceItem.findById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      if (!(await assertProviderOwnsItem(req, existing))) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
       const payload = toModelPayload(req.body, req);
       const row = await ServiceItem.update(req.params.id, payload);
       if (!row) return res.status(404).json({ error: 'Not found' });
@@ -159,7 +194,11 @@ module.exports = {
   remove: async (req, res) => {
     try {
       const existing = await ServiceItem.findById(req.params.id);
-      if (existing?.stripe_product_id) {
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+      if (!(await assertProviderOwnsItem(req, existing))) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      if (existing.stripe_product_id) {
         const stripe = getStripe();
         if (stripe) {
           await stripe.products.update(existing.stripe_product_id, { active: false }).catch(() => {});

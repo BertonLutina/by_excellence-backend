@@ -28,6 +28,8 @@ const {
   syncCollaboratorsFromCombo,
   listRequestIdsForProvider,
 } = require('../services/serviceRequestCollaborationService');
+const { isAdmin, providerIdForUser, isRequestClient, pickFields } = require('../utils/entityAccess');
+const { assertCanViewRequest } = require('./serviceRequestCollaboratorController');
 
 const SERVICE_REQUEST_STATUSES = new Set([
   'request_sent',
@@ -47,6 +49,11 @@ const { resolveSortColumn } = require('../utils/sqlQueryGuards');
 const REQUEST_SORT_COLUMNS = [
   'id', 'client_id', 'provider_id', 'status', 'created_at', 'updated_date', 'preferred_date',
 ];
+
+/** Fields a client may change on their own request (accept an offer, cancel). */
+const CLIENT_REQUEST_FIELDS = ['status'];
+/** Statuses a client may set on their own request. */
+const CLIENT_REQUEST_STATUSES = new Set(['offer_accepted', 'cancelled']);
 
 const base = createEntityController(ServiceRequest, 'ServiceRequest');
 
@@ -121,6 +128,11 @@ const getOne = async (req, res) => {
   try {
     const row = await ServiceRequest.findById(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    // Object-level authorization (anti-IDOR): only the owning client, the
+    // assigned or collaborating provider, or an admin may read the request.
+    const canView =
+      (await assertCanViewRequest(req, row)) || (await isRequestClient(row.id, req.user?.id));
+    if (!canView) return res.status(403).json({ error: 'Forbidden' });
     let client_email = null;
     if (row.client_id) {
       const userResult = await executeSQL('SELECT email FROM users WHERE id = ?', [row.client_id]);
@@ -150,21 +162,52 @@ const getAll = async (req, res) => {
     const sort = normalizeServiceRequestSort(rawSort);
 
     let rows;
-    const pid = normalizeProviderId(providerIdFilter);
-    if (pid) {
-      const ids = await listRequestIdsForProvider(pid);
-      if (!ids.length) return res.json([]);
-      const placeholders = ids.map(() => '?').join(',');
-      const { sortCol, sortDir } = resolveSortColumn(sort, 'DESC', REQUEST_SORT_COLUMNS);
-      const safeLimit = Number(limit) || 100;
-      const safeOffset = Number(offset) || 0;
-      rows = await executeSQL(
-        `SELECT * FROM service_requests WHERE id IN (${placeholders})
-         ORDER BY \`${sortCol}\` ${sortDir} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
-        ids
-      );
-    } else {
-      rows = await ServiceRequest.findAll({ filters, sort, limit, offset });
+
+    // Anti-IDOR: only an admin runs an unscoped / arbitrary-filter list. Every
+    // other caller is forced onto the requests they own, ignoring a spoofed
+    // ?client_id= / ?provider_id=. Without this the list served every request of
+    // the platform (client_email, budget, combo_payload) to any logged-in account.
+    let providerScope = providerIdFilter;
+    if (!isAdmin(req.user)) {
+      const callerId = req.user?.id != null ? Number(req.user.id) : null;
+      if (!callerId) return res.status(401).json({ error: 'Unauthorized' });
+
+      if (req.user.role === 'provider') {
+        const ownPid = await providerIdForUser(callerId);
+        if (ownPid == null) return res.json([]);
+        providerScope = ownPid; // force self, whatever ?provider_id= was passed
+      } else {
+        // client (and any other non-privileged role): own requests only,
+        // legacy-safe for client_id pointing at clients.id instead of users.id.
+        const { sortCol, sortDir } = resolveSortColumn(sort, 'DESC', REQUEST_SORT_COLUMNS);
+        const safeLimit = Number(limit) || 100;
+        const safeOffset = Number(offset) || 0;
+        rows = await executeSQL(
+          `SELECT * FROM service_requests
+           WHERE client_id = ? OR client_id IN (SELECT id FROM clients WHERE user_id = ?)
+           ORDER BY \`${sortCol}\` ${sortDir} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+          [callerId, callerId]
+        );
+      }
+    }
+
+    if (rows === undefined) {
+      const pid = normalizeProviderId(providerScope);
+      if (pid) {
+        const ids = await listRequestIdsForProvider(pid);
+        if (!ids.length) return res.json([]);
+        const placeholders = ids.map(() => '?').join(',');
+        const { sortCol, sortDir } = resolveSortColumn(sort, 'DESC', REQUEST_SORT_COLUMNS);
+        const safeLimit = Number(limit) || 100;
+        const safeOffset = Number(offset) || 0;
+        rows = await executeSQL(
+          `SELECT * FROM service_requests WHERE id IN (${placeholders})
+           ORDER BY \`${sortCol}\` ${sortDir} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+          ids
+        );
+      } else {
+        rows = await ServiceRequest.findAll({ filters, sort, limit, offset });
+      }
     }
 
     if (rows.length === 0) return res.json([]);
@@ -373,10 +416,31 @@ const create = async (req, res) => {
 const update = async (req, res) => {
   try {
     const before = await ServiceRequest.findById(req.params.id);
-    const row = await ServiceRequest.update(req.params.id, req.body);
+    if (!before) return res.status(404).json({ error: 'Not found' });
+
+    let body = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+
+    // Object-level authorization (anti-IDOR): only an admin or the owning client
+    // may update the request, and a client is limited to accepting an offer or
+    // cancelling. The assigned provider has no update path here.
+    if (!isAdmin(req.user)) {
+      if (!(await isRequestClient(before.id, req.user?.id))) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const [filtered, rejected] = pickFields(body, CLIENT_REQUEST_FIELDS);
+      if (rejected.length) {
+        return res.status(403).json({ error: `Clients cannot modify: ${rejected.join(', ')}` });
+      }
+      if (filtered.status != null && !CLIENT_REQUEST_STATUSES.has(filtered.status)) {
+        return res.status(403).json({ error: 'Clients can only accept an offer or cancel' });
+      }
+      body = filtered;
+    }
+
+    const row = await ServiceRequest.update(req.params.id, body);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
-    if (req.body?.status && before?.status && before.status !== row.status) {
+    if (body?.status && before?.status && before.status !== row.status) {
       notifyRequestStatusChange(row.id, row.status).catch((e) => {
         console.warn('[ServiceRequest update] notify failed:', e.message);
       });
@@ -388,10 +452,27 @@ const update = async (req, res) => {
   }
 };
 
+// Object-level authorization (anti-IDOR): remove was falling through to the raw
+// createEntityController.remove, letting any authenticated account delete any
+// request. Only an admin or the owning client may delete.
+const remove = async (req, res) => {
+  try {
+    const before = await ServiceRequest.findById(req.params.id);
+    if (!before) return res.status(404).json({ error: 'Not found' });
+    if (!isAdmin(req.user) && !(await isRequestClient(before.id, req.user?.id))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    return base.remove(req, res);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   ...base,
   getOne,
   getAll,
   create,
   update,
+  remove,
 };

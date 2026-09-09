@@ -1,9 +1,23 @@
 const test = require('node:test');
+const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   computeFinalPaymentDueDate,
   getPaymentWindowStatus,
 } = require('../utils/paymentWindow');
+
+// Ces tests construisent `event = new Date()` puis comparent au `new Date()`
+// interne de getPaymentWindowStatus. L'écart (sub-ms) entre les deux appels
+// faisait basculer `Math.floor((event - now) / msPerDay)` de 15 à 14 ~1 fois
+// sur 20 (et menaçait aussi les bornes J-30 / J-7). On fige l'horloge sur une
+// date sans bascule d'heure d'été pour rendre `daysUntilEvent` déterministe.
+const FROZEN_NOW = new Date('2026-06-15T12:00:00.000Z');
+test.beforeEach(() => {
+  mock.timers.enable({ apis: ['Date'], now: FROZEN_NOW });
+});
+test.afterEach(() => {
+  mock.timers.reset();
+});
 
 test('due_date is event_date minus 7 days', () => {
   const event = new Date('2026-08-01T00:00:00Z');
