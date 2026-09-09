@@ -25,6 +25,27 @@ ${bodyHtml}
 </html>`;
 }
 
+async function ensureExpectedPaymentForOffer(offer) {
+  const paymentType = offer.payment_flow === 'direct_full_payment' ? 'goods_full' : 'deposit';
+  const paymentAmount = paymentType === 'goods_full'
+    ? Number(offer.total_amount || 0)
+    : Number(offer.deposit_amount || 0);
+  const existingPayment = await Payment.findAll({
+    filters: { request_id: offer.request_id, offer_id: offer.id, type: paymentType },
+    limit: 5,
+  });
+  if (existingPayment.length === 0) {
+    await Payment.create({
+      request_id: offer.request_id,
+      offer_id: offer.id,
+      type: paymentType,
+      amount: paymentAmount,
+      status: 'pending',
+    });
+  }
+  return paymentType;
+}
+
 exports.get = async (req, res) => {
   try {
     const offerId = req.query.offer_id;
@@ -48,6 +69,7 @@ exports.get = async (req, res) => {
 
     if (action === 'accept') {
       if (offer.status === 'accepted') {
+        await ensureExpectedPaymentForOffer(offer);
         return res
           .status(200)
           .type('html')
@@ -65,23 +87,7 @@ exports.get = async (req, res) => {
       notifyOfferStatusChange(offerId, 'accepted').catch(() => {});
       notifyRequestStatusChange(offer.request_id, 'offer_accepted').catch(() => {});
 
-      const paymentType = offer.payment_flow === 'direct_full_payment' ? 'goods_full' : 'deposit';
-      const paymentAmount = paymentType === 'goods_full'
-        ? Number(offer.total_amount || 0)
-        : Number(offer.deposit_amount || 0);
-      const existingPayment = await Payment.findAll({
-        filters: { request_id: offer.request_id, offer_id: offer.id, type: paymentType },
-        limit: 5,
-      });
-      if (existingPayment.length === 0) {
-        await Payment.create({
-          request_id: offer.request_id,
-          offer_id: offer.id,
-          type: paymentType,
-          amount: paymentAmount,
-          status: 'pending',
-        });
-      }
+      const paymentType = await ensureExpectedPaymentForOffer(offer);
 
       const paymentInstructions = paymentType === 'goods_full'
         ? 'Vous allez recevoir les instructions pour le paiement complet.'

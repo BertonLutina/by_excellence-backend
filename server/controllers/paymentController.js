@@ -2,6 +2,7 @@ const createEntityController = require('./createEntityController');
 const Payment = require('../models/Payment');
 const Offer = require('../models/Offer');
 const paymentCommissionService = require('../services/paymentCommissionService');
+const { updateServiceRequestStatusAfterPayment } = require('../services/paymentPostProcessService');
 const { getPaymentWindowStatus } = require('../utils/paymentWindow');
 const ServiceRequest = require('../models/ServiceRequest');
 const { executeSQL } = require('../db/db');
@@ -130,7 +131,18 @@ const create = async (req, res) => {
       if (offer.payment_flow !== 'direct_full_payment') {
         return res.status(400).json({ error: 'goods_full payments require a direct full payment offer' });
       }
+      if (offer.status !== 'accepted') {
+        return res.status(400).json({ error: 'goods_full payments require an accepted offer' });
+      }
       body.amount = Number(offer.total_amount || 0);
+
+      const existing = await Payment.findAll({
+        filters: { request_id: body.request_id, offer_id: body.offer_id, type: 'goods_full' },
+        limit: 5,
+      });
+      if (existing.length > 0) {
+        return res.status(200).json(existing[0]);
+      }
     }
 
     const row = await Payment.create(body);
@@ -158,6 +170,10 @@ const update = async (req, res) => {
 
     const row = await Payment.update(req.params.id, body);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    if (becomingPaid && row.type === 'goods_full') {
+      const request = await ServiceRequest.findById(row.request_id);
+      await updateServiceRequestStatusAfterPayment(row, request, { fromWebhook: false });
+    }
     return res.json(row);
   } catch (err) {
     return res.status(500).json({ error: err.message });

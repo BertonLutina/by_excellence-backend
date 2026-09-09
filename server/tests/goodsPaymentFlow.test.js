@@ -221,10 +221,70 @@ test('accepting a service offer still creates a pending deposit payment', async 
   ]);
 });
 
+test('retrying an already accepted goods offer repairs a missing goods_full payment', async () => {
+  const createdPayments = [];
+  const offer = {
+    id: 46,
+    request_id: 14,
+    provider_id: 9,
+    status: 'accepted',
+    payment_flow: 'direct_full_payment',
+    total_amount: 320,
+    deposit_amount: 96,
+  };
+  const controller = loadWithStubs('../controllers/offerRespondController', {
+    '../models/Offer': {
+      findById: async () => offer,
+      update: async () => {
+        throw new Error('accepted offer should not be updated on retry');
+      },
+    },
+    '../models/ServiceRequest': {
+      findById: async () => ({ id: 14, client_email: 'client@example.com' }),
+      update: async () => {
+        throw new Error('request should not be updated on retry');
+      },
+    },
+    '../models/Payment': {
+      findAll: async () => [],
+      create: async (payload) => {
+        createdPayments.push(payload);
+        return { id: createdPayments.length, ...payload };
+      },
+    },
+    '../utils/offerActionToken': {
+      makeOfferActionToken: () => 'valid-token',
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../services/notificationService': {
+      notifyRequestStatusChange: async () => {},
+      notifyOfferStatusChange: async () => {},
+    },
+  });
+
+  const req = { query: { offer_id: 46, action: 'accept', token: 'valid-token' } };
+  const res = createMockRes();
+  await controller.get(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(createdPayments, [
+    {
+      request_id: 14,
+      offer_id: 46,
+      type: 'goods_full',
+      amount: 320,
+      status: 'pending',
+    },
+  ]);
+});
+
 test('client-created goods_full payment is allowed only for direct flow and uses offer total', async () => {
   let capturedPayment = null;
   const controller = loadWithStubs('../controllers/paymentController', {
     '../models/Payment': {
+      findAll: async () => [],
       create: async (payload) => {
         capturedPayment = payload;
         return { id: 90, ...payload };
@@ -234,6 +294,7 @@ test('client-created goods_full payment is allowed only for direct flow and uses
       findById: async () => ({
         id: 44,
         request_id: 12,
+        status: 'accepted',
         payment_flow: 'direct_full_payment',
         total_amount: 240,
         deposit_amount: 72,
@@ -267,6 +328,107 @@ test('client-created goods_full payment is allowed only for direct flow and uses
   assert.equal(capturedPayment.amount, 240);
   assert.equal(capturedPayment.status, 'pending');
   assert.equal(capturedPayment.type, 'goods_full');
+});
+
+test('client-created goods_full payment requires an accepted direct flow offer', async () => {
+  let createCalled = false;
+  const controller = loadWithStubs('../controllers/paymentController', {
+    '../models/Payment': {
+      create: async () => {
+        createCalled = true;
+        return { id: 92 };
+      },
+      findAll: async () => [],
+    },
+    '../models/Offer': {
+      findById: async () => ({
+        id: 46,
+        request_id: 14,
+        status: 'sent_to_client',
+        payment_flow: 'direct_full_payment',
+        total_amount: 320,
+        deposit_amount: 96,
+      }),
+    },
+    '../models/ServiceRequest': {},
+    '../services/paymentCommissionService': {},
+    '../services/paymentPostProcessService': {},
+    '../utils/paymentWindow': { getPaymentWindowStatus: () => ({ status: 'ok' }) },
+    '../db/db': { executeSQL: async () => [] },
+    '../utils/entityAccess': {
+      isAdmin: () => false,
+      providerIdForUser: async () => null,
+      isRequestClient: async () => true,
+    },
+  });
+
+  const req = {
+    user: { id: 5, role: 'client' },
+    body: { request_id: 14, offer_id: 46, type: 'goods_full', amount: 1 },
+  };
+  const res = createMockRes();
+  await controller.create(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(createCalled, false);
+});
+
+test('client-created goods_full payment reuses the existing request offer payment', async () => {
+  let createCalled = false;
+  const existingPayment = {
+    id: 93,
+    request_id: 14,
+    offer_id: 46,
+    type: 'goods_full',
+    amount: 320,
+    status: 'pending',
+  };
+  const controller = loadWithStubs('../controllers/paymentController', {
+    '../models/Payment': {
+      create: async () => {
+        createCalled = true;
+        return { id: 94 };
+      },
+      findAll: async ({ filters }) => (
+        filters.request_id === 14 &&
+        filters.offer_id === 46 &&
+        filters.type === 'goods_full'
+          ? [existingPayment]
+          : []
+      ),
+    },
+    '../models/Offer': {
+      findById: async () => ({
+        id: 46,
+        request_id: 14,
+        status: 'accepted',
+        payment_flow: 'direct_full_payment',
+        total_amount: 320,
+        deposit_amount: 96,
+      }),
+    },
+    '../models/ServiceRequest': {},
+    '../services/paymentCommissionService': {},
+    '../services/paymentPostProcessService': {},
+    '../utils/paymentWindow': { getPaymentWindowStatus: () => ({ status: 'ok' }) },
+    '../db/db': { executeSQL: async () => [] },
+    '../utils/entityAccess': {
+      isAdmin: () => false,
+      providerIdForUser: async () => null,
+      isRequestClient: async () => true,
+    },
+  });
+
+  const req = {
+    user: { id: 5, role: 'client' },
+    body: { request_id: 14, offer_id: 46, type: 'goods_full', amount: 1 },
+  };
+  const res = createMockRes();
+  await controller.create(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, existingPayment);
+  assert.equal(createCalled, false);
 });
 
 test('client-created goods_full payment is rejected for deposit flow offers', async () => {
@@ -339,6 +501,68 @@ test('paid goods_full payment completes the service request', async () => {
   assert.deepEqual(statusUpdates, [
     { id: 13, payload: { status: 'completed' } },
   ]);
+});
+
+test('admin update to paid goods_full runs payment post-processing', async () => {
+  const postProcessed = [];
+  const existingPayment = {
+    id: 95,
+    request_id: 15,
+    offer_id: 47,
+    type: 'goods_full',
+    amount: 410,
+    status: 'pending',
+  };
+  const updatedPayment = {
+    ...existingPayment,
+    status: 'paid',
+    paid_date: '2026-01-02 03:04:05',
+  };
+  const controller = loadWithStubs('../controllers/paymentController', {
+    '../models/Payment': {
+      findById: async () => existingPayment,
+      update: async (id, payload) => ({ id: Number(id), ...existingPayment, ...payload }),
+      findAll: async () => [],
+    },
+    '../models/Offer': {},
+    '../models/ServiceRequest': {
+      findById: async (id) => ({ id, status: 'offer_accepted' }),
+    },
+    '../services/paymentCommissionService': {
+      commissionFieldsForPaidTransition: async () => ({
+        commission_rate_percent: 15,
+        admin_commission_amount: 61.5,
+        provider_net_amount: 348.5,
+      }),
+    },
+    '../services/paymentPostProcessService': {
+      updateServiceRequestStatusAfterPayment: async (payment, request, options) => {
+        postProcessed.push({ payment, request, options });
+      },
+    },
+    '../utils/paymentWindow': { getPaymentWindowStatus: () => ({ status: 'ok' }) },
+    '../db/db': { executeSQL: async () => [] },
+    '../utils/entityAccess': {
+      isAdmin: () => true,
+      providerIdForUser: async () => null,
+      isRequestClient: async () => false,
+    },
+  });
+
+  const req = {
+    user: { id: 1, role: 'admin' },
+    params: { id: 95 },
+    body: { status: 'paid', paid_date: updatedPayment.paid_date },
+  };
+  const res = createMockRes();
+  await controller.update(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(postProcessed.length, 1);
+  assert.equal(postProcessed[0].payment.type, 'goods_full');
+  assert.equal(postProcessed[0].payment.status, 'paid');
+  assert.deepEqual(postProcessed[0].request, { id: 15, status: 'offer_accepted' });
+  assert.deepEqual(postProcessed[0].options, { fromWebhook: false });
 });
 
 test('offer update recalculates payment_flow instead of trusting the request body', async () => {
