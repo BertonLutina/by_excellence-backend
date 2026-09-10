@@ -8,6 +8,8 @@ const {
 } = require('../utils/providerTier');
 const { isValidPremiumCommissionPercent } = require('../utils/commission');
 
+const ACTIVITY_TYPES = new Set(['service', 'goods', 'both']);
+
 function parseTierFilter(rawTier) {
   if (rawTier === undefined) return { ok: true, value: undefined };
   if (rawTier === null || rawTier === '') return { ok: true, value: null };
@@ -55,10 +57,30 @@ function normalizeProviderPayload(body = {}, req = null) {
     data.provider_tier = computeProviderTier(data.price_from);
   }
 
+  if (Object.prototype.hasOwnProperty.call(data, 'activity_type')) {
+    data.activity_type = ACTIVITY_TYPES.has(data.activity_type) ? data.activity_type : 'service';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'suggested_category_type')) {
+    data.suggested_category_type = ACTIVITY_TYPES.has(data.suggested_category_type)
+      ? data.suggested_category_type
+      : 'service';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'suggested_category_name') && data.suggested_category_name != null) {
+    data.suggested_category_name = String(data.suggested_category_name).trim().slice(0, 150);
+  }
+
   delete data.structure_type;
   delete data.worker_count;
 
   return { ok: true, data };
+}
+
+function canManageProvider(user, provider) {
+  if (user?.role === 'admin') return true;
+  if (user?.role !== 'provider') return false;
+  return provider?.user_id != null && Number(provider.user_id) === Number(user.id);
 }
 
 /** Solo (1 person) vs team; worker_count is headcount on the job (1 solo, ≥2 team). */
@@ -197,6 +219,7 @@ module.exports = {
     try {
       const existing = await Provider.findById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Not found' });
+      if (!canManageProvider(req.user, existing)) return res.status(403).json({ error: 'Forbidden' });
 
       // IDOR guard: only the provider's own owner or an admin may edit this
       // row. The generic PUT /:id endpoint previously had no ownership check
@@ -272,16 +295,7 @@ module.exports = {
     try {
       const existing = await Provider.findById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Not found' });
-
-      // IDOR guard: same rule as update() above. The 02/07/2026 fix on update()
-      // was never propagated here — DELETE /providers/:id had no ownership
-      // check at all, so any authenticated account (a client, another
-      // provider) could delete any provider profile.
-      const isOwner = req.user?.id != null && String(existing.user_id) === String(req.user.id);
-      if (!isOwner && req.user?.role !== 'admin') {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
+      if (!canManageProvider(req.user, existing)) return res.status(403).json({ error: 'Forbidden' });
       await Provider.delete(req.params.id);
       return res.json({ success: true, id: req.params.id });
     } catch (err) {

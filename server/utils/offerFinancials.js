@@ -5,13 +5,13 @@ function roundMoney2(value) {
 }
 
 /**
- * @param {Array<{ price?: number|string }>} items
+ * @param {Array<{ price?: number|string, unit_price?: number|string, quantity?: number|string }>} items
  * @param {'included'|'on_top'} commissionMode
  * @param {number} commissionRatePercent
  */
 function computeOfferFinancials(items, commissionMode = 'included', commissionRatePercent = 15) {
   const subtotal = roundMoney2(
-    (items || []).reduce((s, i) => s + (Number(i.price) || 0), 0)
+    (items || []).reduce((s, i) => s + lineAmount(i), 0)
   );
   const rate = Number(commissionRatePercent) || 0;
 
@@ -39,6 +39,13 @@ function computeOfferFinancials(items, commissionMode = 'included', commissionRa
   };
 }
 
+function lineAmount(item) {
+  const unit = item?.item_type === 'good' && item?.unit_price != null ? Number(item.unit_price) : Number(item?.price);
+  const quantity = Math.max(1, Number(item?.quantity) || 1);
+  const amount = item?.item_type === 'good' ? unit * quantity : unit;
+  return Number.isFinite(amount) ? amount : 0;
+}
+
 function normalizeCommissionMode(mode) {
   return mode === 'on_top' ? 'on_top' : 'included';
 }
@@ -54,6 +61,13 @@ function parseItems(raw) {
     }
   }
   return [];
+}
+
+function resolvePaymentFlow(items) {
+  if (!Array.isArray(items) || items.length === 0) return 'deposit_flow';
+  return items.every((item) => item?.item_type === 'good')
+    ? 'direct_full_payment'
+    : 'deposit_flow';
 }
 
 /**
@@ -75,6 +89,7 @@ function applyOfferFinancials(body, provider) {
     ...body,
     items,
     commission_mode: mode,
+    payment_flow: resolvePaymentFlow(items),
     total_amount: clientTotal,
     deposit_amount: depositAmount,
   };
@@ -83,5 +98,6 @@ function applyOfferFinancials(body, provider) {
 module.exports = {
   computeOfferFinancials,
   normalizeCommissionMode,
+  resolvePaymentFlow,
   applyOfferFinancials,
 };

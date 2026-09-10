@@ -2,6 +2,7 @@ const createEntityController = require('./createEntityController');
 const Payment = require('../models/Payment');
 const Offer = require('../models/Offer');
 const paymentCommissionService = require('../services/paymentCommissionService');
+const { updateServiceRequestStatusAfterPayment } = require('../services/paymentPostProcessService');
 const { getPaymentWindowStatus } = require('../utils/paymentWindow');
 const ServiceRequest = require('../models/ServiceRequest');
 const { executeSQL } = require('../db/db');
@@ -107,19 +108,41 @@ const create = async (req, res) => {
     delete body.admin_commission_amount;
     delete body.provider_net_amount;
 
-    // Clients may only create deposit/final payments tied to an offer of the
+    // Clients may only create controlled payments tied to an offer of the
     // request; the amount is always recomputed server-side (never trusted).
-    if (body.offer_id == null || (body.type !== 'deposit' && body.type !== 'final')) {
-      return res.status(400).json({ error: 'Clients can only create deposit or final payments linked to an offer' });
+    if (body.offer_id == null || !['deposit', 'final', 'goods_full'].includes(body.type)) {
+      return res.status(400).json({ error: 'Clients can only create deposit, final or goods_full payments linked to an offer' });
     }
     const offer = await Offer.findById(body.offer_id);
     if (!offer || Number(offer.request_id) !== Number(body.request_id)) {
       return res.status(400).json({ error: 'offer_id does not match request_id' });
     }
     if (body.type === 'deposit') {
+      if (offer.payment_flow === 'direct_full_payment') {
+        return res.status(400).json({ error: 'Direct full payment offers do not use deposits' });
+      }
       body.amount = Number(offer.deposit_amount || 0);
-    } else {
+    } else if (body.type === 'final') {
+      if (offer.payment_flow === 'direct_full_payment') {
+        return res.status(400).json({ error: 'Direct full payment offers do not use final payments' });
+      }
       body.amount = Math.round((Number(offer.total_amount || 0) - Number(offer.deposit_amount || 0)) * 100) / 100;
+    } else {
+      if (offer.payment_flow !== 'direct_full_payment') {
+        return res.status(400).json({ error: 'goods_full payments require a direct full payment offer' });
+      }
+      if (offer.status !== 'accepted') {
+        return res.status(400).json({ error: 'goods_full payments require an accepted offer' });
+      }
+      body.amount = Number(offer.total_amount || 0);
+
+      const existing = await Payment.findAll({
+        filters: { request_id: body.request_id, offer_id: body.offer_id, type: 'goods_full' },
+        limit: 5,
+      });
+      if (existing.length > 0) {
+        return res.status(200).json(existing[0]);
+      }
     }
 
     const row = await Payment.create(body);
@@ -147,6 +170,10 @@ const update = async (req, res) => {
 
     const row = await Payment.update(req.params.id, body);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    if (becomingPaid && row.type === 'goods_full') {
+      const request = await ServiceRequest.findById(row.request_id);
+      await updateServiceRequestStatusAfterPayment(row, request, { fromWebhook: false });
+    }
     return res.json(row);
   } catch (err) {
     return res.status(500).json({ error: err.message });

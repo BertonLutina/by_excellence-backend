@@ -2,7 +2,7 @@
 const BaseModel = require('./BaseModel');
 
 const TABLE = 'service_categories';
-const COLUMNS = ['id', 'name', 'description', 'icon', 'image_url', 'created_at'];
+const COLUMNS = ['id', 'name', 'description', 'icon', 'image_url', 'category_type', 'is_active', 'created_at'];
 
 class ServiceCategory extends BaseModel {
   constructor(body = {}) {
@@ -12,6 +12,8 @@ class ServiceCategory extends BaseModel {
     this.description = body?.description;
     this.icon = body?.icon;
     this.image_url = body?.image_url;
+    this.category_type = body?.category_type;
+    this.is_active = body?.is_active;
     this.created_at = body?.created_at;
   }
 }

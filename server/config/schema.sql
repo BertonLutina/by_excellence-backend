@@ -96,6 +96,8 @@ CREATE TABLE service_categories (
     description TEXT,
     icon VARCHAR(100),
     image_url TEXT,
+    category_type ENUM('service','goods','both') NOT NULL DEFAULT 'service',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_category_name (name)
 ) ENGINE=InnoDB;
@@ -113,6 +115,9 @@ CREATE TABLE providers (
     banner_url TEXT,
     city VARCHAR(150),
     category_id BIGINT UNSIGNED,
+    activity_type ENUM('service','goods','both') NOT NULL DEFAULT 'service',
+    suggested_category_name VARCHAR(150) NULL,
+    suggested_category_type ENUM('service','goods','both') NULL,
     price_from DECIMAL(10,2),
     provider_tier ENUM('standard','premium') NULL,
     premium_commission_percent DECIMAL(5,2) NULL COMMENT '20 or 30 for premium tier; NULL uses default 20%',
@@ -170,12 +175,15 @@ CREATE TABLE provider_availability (
 CREATE TABLE service_items (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     provider_id BIGINT UNSIGNED NOT NULL,
-    item_type ENUM('service','package') NOT NULL DEFAULT 'package',
+    item_type ENUM('service','package','good') NOT NULL DEFAULT 'package',
     title VARCHAR(255) NOT NULL,
     description TEXT,
     price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     price_type ENUM('fixed','hourly','starting_from','on_quote') NOT NULL DEFAULT 'fixed',
     duration VARCHAR(120),
+    unit VARCHAR(50) NULL,
+    stock_quantity INT UNSIGNED NULL,
+    min_order_quantity INT UNSIGNED NULL,
     `order` INT NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     includes JSON,
@@ -249,6 +257,8 @@ CREATE TABLE offers (
     total_amount DECIMAL(10,2) NOT NULL,
     deposit_amount DECIMAL(10,2),
     deposit_percentage DECIMAL(5,2),
+    commission_mode ENUM('included','on_top') NOT NULL DEFAULT 'included',
+    payment_flow ENUM('deposit_flow','direct_full_payment') NOT NULL DEFAULT 'deposit_flow',
     conditions TEXT,
     valid_until DATE,
     status ENUM('draft','sent_to_admin','sent_to_client','accepted','rejected','expired') DEFAULT 'draft',
@@ -273,7 +283,7 @@ CREATE TABLE payments (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     request_id BIGINT UNSIGNED NOT NULL,
     offer_id BIGINT UNSIGNED NOT NULL,
-    type ENUM('deposit','final','installment') NOT NULL,
+    type ENUM('deposit','final','installment','goods_full') NOT NULL,
     installment_index TINYINT,
     installment_total TINYINT,
     amount DECIMAL(10,2) NOT NULL,
@@ -458,11 +468,11 @@ BEGIN
     END IF;
 END$$
 
--- Final payment paid -> update ServiceRequest to completed
+-- Final or goods full payment paid -> update ServiceRequest to completed
 CREATE TRIGGER trg_final_paid_complete_request AFTER UPDATE ON payments
 FOR EACH ROW
 BEGIN
-    IF NEW.status = 'paid' AND OLD.status != 'paid' AND NEW.type='final' THEN
+    IF NEW.status = 'paid' AND OLD.status != 'paid' AND NEW.type IN ('final', 'goods_full') THEN
         UPDATE service_requests SET status='completed' WHERE id = NEW.request_id;
     END IF;
 END$$

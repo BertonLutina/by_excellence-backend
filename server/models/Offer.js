@@ -5,7 +5,7 @@ const { bindJsonDocument } = require('../utils/portfolioImages');
 const TABLE = 'offers';
 const COLUMNS = [
   'id', 'request_id', 'provider_id', 'title', 'description', 'items', 'total_amount',
-  'deposit_amount', 'deposit_percentage', 'commission_mode', 'conditions', 'valid_until', 'status', 'installment_requested',
+  'deposit_amount', 'deposit_percentage', 'commission_mode', 'payment_flow', 'conditions', 'valid_until', 'status', 'installment_requested',
   'installment_count', 'installment_status', 'created_at', 'updated_date',
 ];
 
@@ -42,6 +42,7 @@ class Offer extends BaseModel {
     this.deposit_amount = body?.deposit_amount;
     this.deposit_percentage = body?.deposit_percentage;
     this.commission_mode = body?.commission_mode === 'on_top' ? 'on_top' : body?.commission_mode === 'included' ? 'included' : body?.commission_mode;
+    this.payment_flow = body?.payment_flow === 'direct_full_payment' ? 'direct_full_payment' : body?.payment_flow === 'deposit_flow' ? 'deposit_flow' : body?.payment_flow;
     this.conditions = body?.conditions;
     this.valid_until = body?.valid_until;
     this.status = normalizeOfferStatus(body?.status);

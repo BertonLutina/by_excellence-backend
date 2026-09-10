@@ -28,7 +28,16 @@ const MIGRATIONS = [
   { table: 'service_requests', column: 'selected_items', ddl: 'selected_items JSON NULL AFTER combo_payload' },
   { table: 'service_requests', column: 'is_open_request', ddl: 'is_open_request BOOLEAN NOT NULL DEFAULT FALSE AFTER is_combo' },
   { table: 'offers', column: 'commission_mode', ddl: "commission_mode ENUM('included','on_top') NOT NULL DEFAULT 'included' AFTER deposit_percentage" },
+  { table: 'offers', column: 'payment_flow', ddl: "payment_flow ENUM('deposit_flow','direct_full_payment') NOT NULL DEFAULT 'deposit_flow' AFTER commission_mode" },
   { table: 'users', column: 'email_notifications', ddl: 'email_notifications JSON NULL AFTER is_email_verified' },
+  { table: 'service_categories', column: 'category_type', ddl: "category_type ENUM('service','goods','both') NOT NULL DEFAULT 'service' AFTER image_url" },
+  { table: 'service_categories', column: 'is_active', ddl: 'is_active BOOLEAN NOT NULL DEFAULT TRUE AFTER category_type' },
+  { table: 'providers', column: 'activity_type', ddl: "activity_type ENUM('service','goods','both') NOT NULL DEFAULT 'service' AFTER category_id" },
+  { table: 'providers', column: 'suggested_category_name', ddl: 'suggested_category_name VARCHAR(150) NULL AFTER activity_type' },
+  { table: 'providers', column: 'suggested_category_type', ddl: "suggested_category_type ENUM('service','goods','both') NULL AFTER suggested_category_name" },
+  { table: 'service_items', column: 'unit', ddl: 'unit VARCHAR(50) NULL AFTER duration' },
+  { table: 'service_items', column: 'stock_quantity', ddl: 'stock_quantity INT UNSIGNED NULL AFTER unit' },
+  { table: 'service_items', column: 'min_order_quantity', ddl: 'min_order_quantity INT UNSIGNED NULL AFTER stock_quantity' },
 ];
 
 // Indexes added after columns; the same `IF NOT EXISTS` issue applies, so we
@@ -68,6 +77,43 @@ async function columnExists(table, column) {
   } catch (e) {
     console.warn(`[startup] columnExists check failed for ${table}.${column}:`, e.message);
     return false;
+  }
+}
+
+async function columnType(table, column) {
+  try {
+    const rows = await executeSQL(
+      `SELECT COLUMN_TYPE AS column_type FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+      [table, column]
+    );
+    const arr = Array.isArray(rows) ? rows : [];
+    return arr[0]?.column_type || null;
+  } catch (e) {
+    console.warn(`[startup] columnType check failed for ${table}.${column}:`, e.message);
+    return null;
+  }
+}
+
+async function runEnumWideningMigrations() {
+  try {
+    const itemType = await columnType('service_items', 'item_type');
+    if (itemType && !itemType.includes("'good'")) {
+      await executeSQL("ALTER TABLE `service_items` MODIFY `item_type` ENUM('service','package','good') NOT NULL DEFAULT 'package'");
+      console.log('[startup] enum widened: service_items.item_type includes good');
+    }
+  } catch (e) {
+    console.error('[startup] enum widening failed (service_items.item_type):', e.message);
+  }
+
+  try {
+    const paymentType = await columnType('payments', 'type');
+    if (paymentType && !paymentType.includes("'goods_full'")) {
+      await executeSQL("ALTER TABLE `payments` MODIFY `type` ENUM('deposit','final','installment','goods_full') NOT NULL");
+      console.log('[startup] enum widened: payments.type includes goods_full');
+    }
+  } catch (e) {
+    console.error('[startup] enum widening failed (payments.type):', e.message);
   }
 }
 
@@ -302,6 +348,7 @@ async function runStartupTasks() {
   await ensureNotificationsTable();
   await ensureCollaboratorsTable();
   await runMigrations();
+  await runEnumWideningMigrations();
   await ensureOpenRequestProviderNullable();
   await migrateProviderAvailabilityIndexes();
   await ensureStripeWebhook();

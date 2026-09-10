@@ -78,7 +78,12 @@ async function validateAndNormalizeSelectedItems(providerId, rawItems) {
 
 function buildDescriptionFromSelectedItems(items, userNotes = '') {
   const lines = (items || []).map((it, i) => {
-    const kind = it.item_type === 'package' ? 'Formule' : 'Service';
+    const kind =
+      it.item_type === 'good'
+        ? 'Bien'
+        : it.item_type === 'package'
+          ? 'Formule'
+          : 'Service';
     const price =
       it.unit_price != null && it.price_type !== 'on_quote'
         ? ` — ${it.unit_price}€${it.price_type === 'hourly' ? '/h' : ''}`
