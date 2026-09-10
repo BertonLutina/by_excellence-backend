@@ -1,6 +1,6 @@
 const ServiceItem = require('../models/ServiceItem');
-const Provider = require('../models/Provider');
 const { getStripe } = require('../utils/stripeClient');
+const { providerIdForUser } = require('../utils/entityAccess');
 
 const ITEM_TYPES = new Set(['service', 'package', 'good']);
 const GOODS_QUANTITY_FIELDS = ['stock_quantity', 'min_order_quantity'];
@@ -74,8 +74,7 @@ function serialize(row) {
 
 async function currentProviderId(req) {
   if (req?.user?.role !== 'provider') return null;
-  const provider = await Provider.findByUserId(req.user.id);
-  return provider?.id == null ? null : Number(provider.id);
+  return providerIdForUser(req.user.id);
 }
 
 function canManageServiceItem(user, item, providerId) {
