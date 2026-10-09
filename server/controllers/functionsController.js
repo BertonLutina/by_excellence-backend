@@ -11,6 +11,7 @@ const { generateInvoicePdfForPayment } = require('../services/invoicePdfService'
 const { sendMail, isMailConfigured } = require('../utils/mailer');
 const Offer = require('../models/Offer');
 const { buildStripeProductName, buildStripeProductDescription, isComboRequest } = require('../utils/stripeProductCopy');
+const { buildCheckoutPaymentSession } = require('../utils/platformCharge');
 const {
   validateStripeAmount,
   assertPaymentOrderForCheckout,
@@ -123,7 +124,6 @@ exports.invoke = async (req, res) => {
         const successUrl = `${baseUrl}/ClientRequestDetail?id=${request.id}&payment_success=true`;
         const cancelUrl = `${baseUrl}/ClientRequestDetail?id=${request.id}&payment_cancelled=true`;
         const amountNum = Number(payment.amount);
-        const feeCents = Math.round(commissionBreakdown.admin_commission_amount * 100);
 
         const stripe = getStripe();
         // Skip Stripe only when explicitly requested (STRIPE_BYPASS=1) or when
@@ -144,57 +144,40 @@ exports.invoke = async (req, res) => {
               sessionUrl: successUrl,
               amount: amountNum,
               commission: commissionBreakdown,
-              stripe_application_fee_amount: feeCents,
-              stripe_transfer_amount: Math.round(commissionBreakdown.provider_net_amount * 100),
             },
           });
         }
 
         const productName = buildStripeProductName(payment, request, offer);
         const productDescription = buildStripeProductDescription(payment, request, offer);
+        const metadata = {
+          payment_id: String(payment.id),
+          request_id: String(request.id),
+          payment_type: String(payment.type || 'unknown'),
+        };
+        if (req.user?.email) metadata.client_email = String(req.user.email).slice(0, 500);
+        if (payment.offer_id != null) metadata.offer_id = String(payment.offer_id);
+        if (isComboRequest(request)) metadata.is_combo = '1';
+        if (payment.type === 'installment') {
+          if (payment.installment_index != null) metadata.installment_index = String(payment.installment_index);
+          if (payment.installment_total != null) metadata.installment_total = String(payment.installment_total);
+        }
 
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          line_items: [
-            {
-              price_data: {
-                currency: 'eur',
-                product_data: {
-                  name: productName,
-                  description: productDescription || undefined,
-                },
-                unit_amount: Math.round(amountNum * 100),
-              },
-              quantity: 1,
-            },
-          ],
-          mode: 'payment',
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-          metadata: (() => {
-            const meta = {
-              payment_id: String(payment.id),
-              request_id: String(request.id),
-              payment_type: String(payment.type || 'unknown'),
-            };
-            if (req.user?.email) meta.client_email = String(req.user.email).slice(0, 500);
-            if (payment.offer_id != null) meta.offer_id = String(payment.offer_id);
-            if (isComboRequest(request)) meta.is_combo = '1';
-            if (payment.type === 'installment') {
-              if (payment.installment_index != null) meta.installment_index = String(payment.installment_index);
-              if (payment.installment_total != null) meta.installment_total = String(payment.installment_total);
-            }
-            return meta;
-          })(),
-        });
+        const session = await stripe.checkout.sessions.create(buildCheckoutPaymentSession({
+          currency: 'eur',
+          productName,
+          productDescription,
+          unitAmount: Math.round(amountNum * 100),
+          successUrl,
+          cancelUrl,
+          metadata,
+        }));
 
         return res.json({
           data: {
             sessionUrl: session.url,
             amount: amountNum,
             commission: commissionBreakdown,
-            stripe_application_fee_amount: feeCents,
-            stripe_transfer_amount: Math.round(commissionBreakdown.provider_net_amount * 100),
           },
         });
       }

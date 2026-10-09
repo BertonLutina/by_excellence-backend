@@ -354,3 +354,47 @@ test('create forces user_id to the caller for non-admins', async () => {
   assert.equal(res.statusCode, 201);
   assert.equal(capturedPayload.user_id, 42);
 });
+
+test('updateStatus blocks active without VAT/BCE', async () => {
+  const originalFindById = Provider.findById;
+  const originalUpdate = Provider.update;
+  Provider.findById = async () => ({ id: 9, vat_number: '', siret: null, status: 'pending' });
+  Provider.update = async () => {
+    throw new Error('should not update');
+  };
+
+  const req = { params: { id: '9' }, body: { status: 'active' }, user: { id: 1, role: 'admin' } };
+  const res = createMockRes();
+
+  await controller.updateStatus(req, res);
+
+  Provider.findById = originalFindById;
+  Provider.update = originalUpdate;
+
+  assert.equal(res.statusCode, 422);
+  assert.equal(res.body.code, 'PROVIDER_TAX_IDS_REQUIRED');
+  assert.ok(Array.isArray(res.body.missing));
+});
+
+test('updateStatus allows active when VAT and BCE are set', async () => {
+  const originalFindById = Provider.findById;
+  const originalUpdate = Provider.update;
+  Provider.findById = async () => ({
+    id: 9,
+    vat_number: 'BE0123456789',
+    siret: '0123456789',
+    status: 'pending',
+  });
+  Provider.update = async (id, data) => ({ id: Number(id), ...data, vat_number: 'BE0123456789', siret: '0123456789' });
+
+  const req = { params: { id: '9' }, body: { status: 'active' }, user: { id: 1, role: 'admin' } };
+  const res = createMockRes();
+
+  await controller.updateStatus(req, res);
+
+  Provider.findById = originalFindById;
+  Provider.update = originalUpdate;
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.status, 'active');
+});

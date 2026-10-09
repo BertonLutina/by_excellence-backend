@@ -6,6 +6,7 @@ const Provider = require('../models/Provider');
 const User = require('../models/User');
 const { sendMail } = require('../utils/mailer');
 const { emailWantsEmail, userWantsEmail, wantsEmail } = require('../utils/emailPreferences');
+const { userWantsInApp } = require('../utils/inAppNotificationPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
 const { sendStatusNotification, STATUS_CONFIG, emailTemplate } = require('./statusNotificationService');
 
@@ -77,6 +78,7 @@ async function sendPrefEmail(userId, prefKey, { subject, title, bodyHtml, ctaUrl
 async function insertNotification(userId, { type, title, body, payload }) {
   const uid = Number(userId);
   if (!uid) return null;
+  if (type && !(await userWantsInApp(uid, type))) return null;
   const result = await executeSQL(
     `INSERT INTO notifications (user_id, type, title, body, payload) VALUES (?, ?, ?, ?, ?)`,
     [uid, type, title, body, JSON.stringify(payload || {})]
@@ -105,15 +107,32 @@ async function insertForUsers(userIds, data) {
   return rows;
 }
 
-function detailUrlForRole(role, requestId, offerId) {
+const ID_TO_ROLE = { 1: 'client', 2: 'provider', 3: 'admin' };
+
+function resolveUserRole(userOrRole) {
+  if (userOrRole == null) return 'client';
+  const raw =
+    typeof userOrRole === 'object'
+      ? userOrRole.role ?? userOrRole.role_id
+      : userOrRole;
+  if (raw === 'client' || raw === 'provider' || raw === 'admin') return raw;
+  return ID_TO_ROLE[Number(raw)] || 'client';
+}
+
+/** Paths must be lowercase to match frontend createPageUrl / App routePath. */
+function detailUrlForRole(role, requestId, offerId, { chat = false } = {}) {
   const base = appBase();
-  if (role === 'admin') return `${base}/AdminRequestDetail?id=${requestId}`;
-  if (role === 'provider') {
-    return offerId
-      ? `${base}/ProviderDashboard?request=${requestId}&offer=${offerId}`
-      : `${base}/ProviderDashboard?request=${requestId}`;
+  const rid = encodeURIComponent(requestId);
+  const chatQ = chat ? '&chat=1' : '';
+  const resolved = resolveUserRole(role);
+  if (resolved === 'admin') {
+    return `${base}/adminrequestdetail?id=${rid}${chatQ}`;
   }
-  return `${base}/ClientRequestDetail?id=${requestId}`;
+  if (resolved === 'provider') {
+    const offerQ = offerId ? `&offer=${encodeURIComponent(offerId)}` : '';
+    return `${base}/providerdashboard?request=${rid}${offerQ}${chatQ}`;
+  }
+  return `${base}/clientrequestdetail?id=${rid}${chatQ}`;
 }
 
 async function notifyNewMessage(messageRow, audienceUserIds) {
@@ -121,7 +140,6 @@ async function notifyNewMessage(messageRow, audienceUserIds) {
   const recipientIds = (audienceUserIds || []).filter((id) => Number(id) !== senderId);
   if (!recipientIds.length) return;
 
-  const request = await ServiceRequest.findById(messageRow.request_id);
   const preview = String(messageRow.content || '').trim().slice(0, 120);
   const title = 'Nouveau message';
   const body = preview
@@ -130,8 +148,8 @@ async function notifyNewMessage(messageRow, audienceUserIds) {
 
   for (const userId of recipientIds) {
     const user = await User.findById(userId);
-    const role = user?.role || 'client';
-    const href = detailUrlForRole(role, messageRow.request_id, messageRow.offer_id);
+    const role = resolveUserRole(user);
+    const href = detailUrlForRole(role, messageRow.request_id, messageRow.offer_id, { chat: true });
     await insertNotification(userId, {
       type: 'new_message',
       title,
@@ -141,6 +159,7 @@ async function notifyNewMessage(messageRow, audienceUserIds) {
         offer_id: messageRow.offer_id ?? null,
         message_id: messageRow.id,
         href,
+        open_chat: true,
       },
     });
   }
@@ -484,11 +503,25 @@ async function listForUser(userId, { limit = 30, unreadOnly = false } = {}) {
     `SELECT * FROM notifications WHERE user_id = ? ${where} ORDER BY created_at DESC LIMIT ${safeLimit}`,
     [uid]
   );
-  return (Array.isArray(rows) ? rows : []).map((r) => ({
-    ...r,
-    payload: typeof r.payload === 'string' ? JSON.parse(r.payload || '{}') : r.payload || {},
-    is_read: Boolean(r.is_read),
-  }));
+  return (Array.isArray(rows) ? rows : []).map((r) => {
+    let payload = {};
+    if (r.payload != null) {
+      if (typeof r.payload === 'string') {
+        try {
+          payload = JSON.parse(r.payload || '{}') || {};
+        } catch {
+          payload = {};
+        }
+      } else if (typeof r.payload === 'object') {
+        payload = r.payload;
+      }
+    }
+    return {
+      ...r,
+      payload,
+      is_read: Boolean(Number(r.is_read)),
+    };
+  });
 }
 
 async function countUnread(userId) {
@@ -515,6 +548,92 @@ async function markAllRead(userId) {
   return { ok: true };
 }
 
+async function notifyPartnershipInvite(partnershipId) {
+  const rows = await executeSQL(
+    `SELECT pp.id, pp.lead_provider_id, pp.partner_provider_id,
+            lead.display_name AS lead_name
+     FROM provider_partnerships pp
+     INNER JOIN providers lead ON lead.id = pp.lead_provider_id
+     WHERE pp.id = ? LIMIT 1`,
+    [Number(partnershipId)]
+  );
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  if (!row) return;
+
+  const invitedUserId = await getProviderUserId(row.partner_provider_id);
+  const href = '/providersettings';
+  const title = '📩 Invitation de partenariat';
+  const body = row.lead_name
+    ? `${row.lead_name} vous invite à un partenariat By Excellence`
+    : 'Nouvelle invitation de partenariat';
+
+  if (invitedUserId) {
+    await insertNotification(invitedUserId, {
+      type: 'partnership_invite',
+      title,
+      body,
+      payload: { partnership_id: row.id, href },
+    });
+    await sendPrefEmail(invitedUserId, 'partnership.invite', {
+      subject: `[By Excellence] ${title}`,
+      title,
+      bodyHtml: `<p>${body}.</p><p>Connectez-vous pour accepter le contrat et le périmètre proposés.</p>`,
+      ctaUrl: `${appBase()}${href}`,
+      ctaLabel: 'Voir le partenariat',
+    });
+  }
+
+  const leadUserId = await getProviderUserId(row.lead_provider_id);
+  if (leadUserId) {
+    await sendPrefEmail(leadUserId, 'partnership.invite', {
+      subject: '[By Excellence] Invitation de partenariat envoyée',
+      title: '📩 Invitation envoyée',
+      bodyHtml: '<p>Votre invitation de partenariat a été envoyée.</p>',
+      ctaUrl: `${appBase()}${href}`,
+      ctaLabel: 'Voir mes partenariats',
+    });
+  }
+}
+
+async function notifyPartnershipResponse(partnershipId, status) {
+  const rows = await executeSQL(
+    `SELECT pp.id, pp.lead_provider_id, pp.partner_provider_id,
+            partner.display_name AS partner_name
+     FROM provider_partnerships pp
+     INNER JOIN providers partner ON partner.id = pp.partner_provider_id
+     WHERE pp.id = ? LIMIT 1`,
+    [Number(partnershipId)]
+  );
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  if (!row) return;
+
+  const accepted = status === 'accepted';
+  const title = accepted ? '✅ Partenariat accepté' : '❌ Partenariat refusé';
+  const body = row.partner_name
+    ? `${row.partner_name} a ${accepted ? 'accepté' : 'refusé'} le partenariat`
+    : accepted
+      ? 'Le partenaire a accepté'
+      : 'Le partenaire a refusé';
+  const href = '/providersettings';
+
+  const leadUserId = await getProviderUserId(row.lead_provider_id);
+  if (leadUserId) {
+    await insertNotification(leadUserId, {
+      type: 'partnership_response',
+      title,
+      body,
+      payload: { partnership_id: row.id, status, href },
+    });
+    await sendPrefEmail(leadUserId, 'partnership.response', {
+      subject: `[By Excellence] ${title}`,
+      title,
+      bodyHtml: `<p>${body}.</p>`,
+      ctaUrl: `${appBase()}${href}`,
+      ctaLabel: 'Voir le partenariat',
+    });
+  }
+}
+
 module.exports = {
   insertNotification,
   insertForUsers,
@@ -524,9 +643,12 @@ module.exports = {
   notifyComboRequestCreated,
   notifyCollaborationInvite,
   notifyCollaborationResponse,
+  notifyPartnershipInvite,
+  notifyPartnershipResponse,
   listForUser,
   countUnread,
   markRead,
   markAllRead,
   detailUrlForRole,
+  resolveUserRole,
 };

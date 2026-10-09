@@ -7,7 +7,7 @@
  * jamais pu être testées : le shell était en panne ce jour-là, les correctifs
  * sont partis en production nus.
  *
- * Convention (identique à providerController.test.js / stripeConnectController.test.js) :
+ * Convention (identique à providerController.test.js) :
  *   - on appelle le contrôleur directement avec un req/res simulé ;
  *   - `req.user` porte l'identité (id + role) posée par le middleware `authenticate` ;
  *   - les méthodes statiques des modèles sont remplacées le temps d'un test ;
@@ -661,6 +661,124 @@ test('users GET /users/:id: un admin → 200', async (t) => {
   await userController.getOne(req, res);
 
   assert.equal(res.statusCode, 200);
+});
+
+// --- DELETE /users/:id ------------------------------------------------
+test('users DELETE: un client supprime son propre compte → 200', async (t) => {
+  let deletedId = null;
+  withStubs(t, [User, {
+    findById: async () => ({ id: 5, role: 1 }),
+    delete: async (id) => { deletedId = id; return { id }; },
+  }]);
+  const req = { params: { id: '5' }, user: { id: 5, role: 'client' } };
+  const res = createMockRes();
+
+  await userController.remove(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.success, true);
+  assert.equal(deletedId, 5);
+});
+
+test('users DELETE: un prestataire supprime son propre compte → 200', async (t) => {
+  let deletedId = null;
+  withStubs(t, [User, {
+    findById: async () => ({ id: 8, role: 'provider' }),
+    delete: async (id) => { deletedId = id; return { id }; },
+  }]);
+  const req = { params: { id: '8' }, user: { id: '8', role: 'provider' } };
+  const res = createMockRes();
+
+  await userController.remove(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(deletedId, 8);
+});
+
+test('users DELETE: un client ne peut pas supprimer un autre compte → 403', async (t) => {
+  let deleted = false;
+  withStubs(t, [User, {
+    findById: async () => ({ id: 8, role: 2 }),
+    delete: async () => { deleted = true; },
+  }]);
+  const req = { params: { id: '8' }, user: { id: 5, role: 'client' } };
+  const res = createMockRes();
+
+  await userController.remove(req, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(deleted, false);
+});
+
+test('users DELETE: un admin supprime un client ou un prestataire → 200', async (t) => {
+  const deleted = [];
+  withStubs(t, [User, {
+    findById: async (id) => ({ id: Number(id), role: Number(id) === 5 ? 1 : 2 }),
+    delete: async (id) => { deleted.push(id); return { id }; },
+  }]);
+
+  const clientRes = createMockRes();
+  await userController.remove(
+    { params: { id: '5' }, user: { id: 1, role: 'admin' } },
+    clientRes,
+  );
+  const providerRes = createMockRes();
+  await userController.remove(
+    { params: { id: '8' }, user: { id: 1, role: 'admin' } },
+    providerRes,
+  );
+
+  assert.equal(clientRes.statusCode, 200);
+  assert.equal(providerRes.statusCode, 200);
+  assert.deepEqual(deleted, [5, 8]);
+});
+
+test('users DELETE: un admin ne peut pas supprimer un compte admin → 403', async (t) => {
+  let deleted = false;
+  withStubs(t, [User, {
+    findById: async () => ({ id: 2, role: 3 }),
+    delete: async () => { deleted = true; },
+  }]);
+  const req = { params: { id: '2' }, user: { id: 1, role: 'admin' } };
+  const res = createMockRes();
+
+  await userController.remove(req, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(deleted, false);
+});
+
+test('users DELETE: compte introuvable → 404', async (t) => {
+  let deleted = false;
+  withStubs(t, [User, {
+    findById: async () => null,
+    delete: async () => { deleted = true; },
+  }]);
+  const req = { params: { id: '404' }, user: { id: 1, role: 'admin' } };
+  const res = createMockRes();
+
+  await userController.remove(req, res);
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(deleted, false);
+});
+
+test('users DELETE: contrainte SQL → 409', async (t) => {
+  withStubs(t, [User, {
+    findById: async () => ({ id: 5, role: 1 }),
+    delete: async () => {
+      const err = new Error('Cannot delete or update a parent row');
+      err.code = 'ER_ROW_IS_REFERENCED_2';
+      err.errno = 1451;
+      throw err;
+    },
+  }]);
+  const req = { params: { id: '5' }, user: { id: 5, role: 'client' } };
+  const res = createMockRes();
+
+  await userController.remove(req, res);
+
+  assert.equal(res.statusCode, 409);
 });
 
 // --- GET /bookings , GET /bookings/:id (filtre forcé) -----------------

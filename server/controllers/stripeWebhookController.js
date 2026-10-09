@@ -1,9 +1,9 @@
-const { STRIPE_WEBHOOK_SECRET, STRIPE_CONNECT_WEBHOOK_SECRET, QUIET_LOGS } = require('../../constants/constant');
+const { STRIPE_WEBHOOK_SECRET, QUIET_LOGS } = require('../../constants/constant');
 const { getStripe } = require('../utils/stripeClient');
 const { markPaymentPaid } = require('../services/paymentPostProcessService');
+const Payment = require('../models/Payment');
 const { sendPaymentConfirmationEmail } = require('../services/paymentConfirmationEmail');
 const DOCUMENTED_WEBHOOK_TYPES = require('../constants/stripeWebhookEventTypes');
-const Provider = require('../models/Provider');
 
 function objectId(obj) {
   return obj && typeof obj === 'object' && obj.id != null ? String(obj.id) : '';
@@ -20,41 +20,36 @@ async function handleCheckoutSessionPaid(session) {
   const result = await markPaymentPaid(paymentId, { payment_method: 'card', fromWebhook: true });
   if (!result.ok && result.code !== 400) {
     console.error('[Stripe webhook] markPaymentPaid failed', result);
-  } else if (result.ok) {
+    return;
+  }
+  await recordStripeFee(session, paymentId);
+  if (result.ok) {
     await sendPaymentConfirmationEmail(paymentId).catch((e) =>
       console.error('[Stripe webhook] confirmation email:', e.message)
     );
   }
 }
 
-/**
- * Connect account status changed (onboarding progressed, requirements added,
- * Stripe restricted the account, ...). This is the ONLY place
- * stripe_connect_status / stripe_payouts_enabled are written after the
- * initial "pending" set by stripeConnectController — Stripe is the source of
- * truth for whether an account can actually receive payouts.
- */
-async function handleAccountUpdated(account) {
-  if (!account?.id) return;
-  const rows = await Provider.findAll({ filters: { stripe_account_id: account.id }, limit: 1 });
-  const provider = rows[0];
-  if (!provider) {
-    // Not one of our providers (or metadata/account id mismatch) — ignore.
-    return;
+/** Persist the Stripe processing fee from the charge balance transaction. */
+async function recordStripeFee(session, paymentId) {
+  const stripe = getStripe();
+  const piRef = session.payment_intent;
+  const piId = typeof piRef === 'string' ? piRef : piRef?.id;
+  if (!stripe || !piId) return;
+  try {
+    const pi = await stripe.paymentIntents.retrieve(piId, {
+      expand: ['latest_charge.balance_transaction'],
+    });
+    const charge = pi.latest_charge;
+    const txn = charge && typeof charge === 'object' ? charge.balance_transaction : null;
+    if (!txn || typeof txn !== 'object' || txn.fee == null) return;
+    const fee = Math.round(Number(txn.fee)) / 100;
+    if (!Number.isFinite(fee)) return;
+    await Payment.update(paymentId, { stripe_fee_amount: fee });
+  } catch (err) {
+    console.warn('[Stripe webhook] fee lookup failed', err.message);
   }
-
-  let status = 'pending';
-  if (account.payouts_enabled && account.charges_enabled) status = 'active';
-  else if (account.requirements?.disabled_reason) status = 'restricted';
-
-  await Provider.update(provider.id, {
-    stripe_connect_status: status,
-    stripe_payouts_enabled: account.payouts_enabled ? 1 : 0,
-  });
 }
-
-// Exported for unit tests (bypasses the signature-verification HTTP layer).
-exports.handleAccountUpdated = handleAccountUpdated;
 
 function logWebhookEvent(event) {
   if (QUIET_LOGS) return;
@@ -87,7 +82,7 @@ async function verifyAndDispatch(req, res, { secret, label, dispatch }) {
   }
 }
 
-/** POST /api/stripe/webhook — "Votre compte" event scope (checkout, payments, ...). */
+/** POST /api/stripe/webhook — platform account (checkout, payments). */
 exports.handle = (req, res) =>
   verifyAndDispatch(req, res, {
     secret: STRIPE_WEBHOOK_SECRET,
@@ -112,29 +107,6 @@ exports.handle = (req, res) =>
           } else {
             console.log('[Stripe webhook] event (add to stripeWebhookEventTypes if standard):', event.type);
           }
-      }
-    },
-  });
-
-/**
- * POST /api/stripe/webhook/connect — "Comptes connectés" event scope.
- * Separate destination in the Stripe Dashboard, separate signing secret
- * (STRIPE_CONNECT_WEBHOOK_SECRET) — Stripe does not let one destination
- * receive both "Votre compte" and "Comptes connectés" events, so this
- * cannot be merged into exports.handle above.
- */
-exports.handleConnect = (req, res) =>
-  verifyAndDispatch(req, res, {
-    secret: STRIPE_CONNECT_WEBHOOK_SECRET,
-    label: 'connect',
-    dispatch: async (event) => {
-      switch (event.type) {
-        case 'account.updated':
-          await handleAccountUpdated(event.data.object);
-          break;
-
-        default:
-          logWebhookEvent(event);
       }
     },
   });

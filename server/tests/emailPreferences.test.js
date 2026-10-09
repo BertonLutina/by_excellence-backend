@@ -11,6 +11,7 @@ const {
 test('defaults: all known keys true', () => {
   assert.ok(EMAIL_PREF_KEYS.includes('status.cancelled'));
   assert.ok(EMAIL_PREF_KEYS.includes('collaboration.invite'));
+  assert.ok(EMAIL_PREF_KEYS.includes('partnership.invite'));
   for (const k of EMAIL_PREF_KEYS) {
     assert.equal(DEFAULT_EMAIL_PREFS[k], true);
   }

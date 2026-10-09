@@ -196,12 +196,68 @@ test('sendPaymentConfirmationEmail skips opted-out client', async () => {
     '../utils/emailPreferences': {
       emailWantsEmail: async () => false,
     },
+    '../services/invoicePdfService': {
+      ensurePaymentInvoiceStored: async () => ({ ok: true, buffer: Buffer.from('%PDF'), filename: 'facture-FAC-00000001.pdf', invoiceNumber: 'FAC-00000001' }),
+    },
   });
 
   const result = await sendPaymentConfirmationEmail(1);
 
   assert.deepEqual(result, { ok: true, skipped: true, reason: 'prefs' });
   assert.equal(sendMailCalls.length, 0);
+});
+
+test('sendPaymentConfirmationEmail attaches invoice PDF for the client', async () => {
+  const sendMailCalls = [];
+
+  const { sendPaymentConfirmationEmail } = loadWithStubs('../services/paymentConfirmationEmail', {
+    '../models/Payment': {
+      findById: async () => ({
+        id: 42,
+        request_id: 99,
+        type: 'deposit',
+        amount: 250,
+      }),
+    },
+    '../models/ServiceRequest': {
+      findById: async () => ({
+        id: 99,
+        client_email: 'client@example.com',
+        client_name: 'Client',
+        provider_name: 'Provider',
+      }),
+    },
+    '../utils/mailer': {
+      sendMail: async (payload) => {
+        sendMailCalls.push(payload);
+      },
+    },
+    '../../constants/constant': {
+      FRONTEND_ORIGIN: 'https://frontend.example',
+    },
+    '../utils/emailPreferences': {
+      emailWantsEmail: async () => true,
+    },
+    '../services/invoicePdfService': {
+      ensurePaymentInvoiceStored: async () => ({
+        ok: true,
+        buffer: Buffer.from('%PDF-1.4'),
+        filename: 'facture-FAC-00000042.pdf',
+        invoiceNumber: 'FAC-00000042',
+      }),
+    },
+  });
+
+  const result = await sendPaymentConfirmationEmail(42);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attachedInvoice, true);
+  assert.equal(sendMailCalls.length, 1);
+  assert.equal(sendMailCalls[0].to, 'client@example.com');
+  assert.match(sendMailCalls[0].subject, /Facture/);
+  assert.equal(sendMailCalls[0].attachments.length, 1);
+  assert.equal(sendMailCalls[0].attachments[0].filename, 'facture-FAC-00000042.pdf');
+  assert.equal(sendMailCalls[0].attachments[0].contentType, 'application/pdf');
 });
 
 test('sendPaymentReminders skips opted-out client reminders but keeps admin overdue alert', async () => {

@@ -25,7 +25,7 @@ const transporter = hasSmtpCredentials()
 
 const isMailConfigured = () => Boolean(transporter);
 
-const sendMail = async ({ to, subject, html, replyTo }) => {
+const sendMail = async ({ to, subject, html, replyTo, attachments }) => {
   if (!transporter) {
     console.warn('[Mail] SMTP_USER/SMTP_PASS not set — skipping send. Set them in .env to enable email.');
     return;
@@ -33,6 +33,9 @@ const sendMail = async ({ to, subject, html, replyTo }) => {
   const from = SMTP_FROM || `"By Excellence" <${SMTP_USER}>`;
   const opts = { from, to, subject, html };
   if (replyTo) opts.replyTo = replyTo;
+  if (Array.isArray(attachments) && attachments.length) {
+    opts.attachments = attachments;
+  }
   await transporter.sendMail(opts);
 };
 

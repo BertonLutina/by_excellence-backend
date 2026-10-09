@@ -3,6 +3,7 @@ const ServiceRequest = require('../models/ServiceRequest');
 const { sendMail } = require('../utils/mailer');
 const { emailWantsEmail } = require('../utils/emailPreferences');
 const { FRONTEND_ORIGIN } = require('../../constants/constant');
+const { ensurePaymentInvoiceStored } = require('./invoicePdfService');
 
 function paymentEmailCopy(payment) {
   if (payment.type === 'deposit') {
@@ -25,6 +26,14 @@ function paymentEmailCopy(payment) {
         ? `<p>Merci : vous avez réglé l’ensemble de votre prestation. Nous espérons que tout se passera au mieux le jour J !</p>
            <p>N'hésitez pas à laisser un avis pour aider d'autres clients.</p>`
         : `<p>Merci pour ce versement. La prochaine échéance est disponible dans votre espace client lorsque vous le souhaitez.</p>`,
+    };
+  }
+  if (payment.type === 'goods_full') {
+    return {
+      paymentType: 'Paiement',
+      icon: '✅',
+      receivedPhrase: 'paiement',
+      extraHtml: `<p>Merci pour votre paiement. Votre commande est confirmée.</p>`,
     };
   }
   return {
@@ -53,9 +62,27 @@ async function sendPaymentConfirmationEmail(paymentId) {
   const { paymentType, icon, receivedPhrase, extraHtml } = paymentEmailCopy(payment);
   const detailUrl = `${FRONTEND_ORIGIN.replace(/\/$/, '')}/ClientRequestDetail?id=${request.id}`;
 
+  let attachments = [];
+  let invoiceLine = '';
+  try {
+    const invoice = await ensurePaymentInvoiceStored(paymentId);
+    if (invoice.ok && invoice.buffer) {
+      attachments = [
+        {
+          filename: invoice.filename || `facture-${invoice.invoiceNumber}.pdf`,
+          content: invoice.buffer,
+          contentType: 'application/pdf',
+        },
+      ];
+      invoiceLine = `<p><strong>Facture :</strong> ${invoice.invoiceNumber} (jointe en PDF). Vous pouvez aussi en télécharger un duplicata depuis votre espace client.</p>`;
+    }
+  } catch (e) {
+    console.warn('[paymentConfirmationEmail] invoice attach failed:', e.message);
+  }
+
   await sendMail({
     to: request.client_email,
-    subject: `${icon} ${paymentType} confirmé`,
+    subject: `${icon} ${paymentType} confirmé — Facture By Excellence`,
     html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #0a0a5c;">${paymentType} bien reçu !</h2>
@@ -78,12 +105,13 @@ async function sendPaymentConfirmationEmail(paymentId) {
                               })}</p>`
                             : ''
                         }
+                        ${invoiceLine}
                     </div>
                     ${extraHtml}
                     <p style="margin-top: 30px;">
                         <a href="${detailUrl}"
                            style="background: #ffe342; color: #0a0a5c; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
-                            Voir les détails
+                            Voir les détails / télécharger le duplicata
                         </a>
                     </p>
                     <p style="color: #666; font-size: 14px; margin-top: 30px;">
@@ -92,9 +120,10 @@ async function sendPaymentConfirmationEmail(paymentId) {
                     </p>
                 </div>
             `,
+    attachments,
   });
 
-  return { ok: true };
+  return { ok: true, attachedInvoice: attachments.length > 0 };
 }
 
 module.exports = { sendPaymentConfirmationEmail };

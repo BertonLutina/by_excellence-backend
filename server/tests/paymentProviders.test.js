@@ -43,10 +43,10 @@ test('registry: defaults to Stripe when nothing forces otherwise', () => {
   assert.equal(gw.capabilities().id, 'stripe');
 });
 
-test('registry: Stripe advertises card + payouts', () => {
+test('registry: Stripe advertises card charges and no provider payouts', () => {
   const caps = byId('stripe').capabilities();
   assert.ok(caps.methods.includes('card'));
-  assert.equal(caps.payouts, true);
+  assert.equal(caps.payouts, false);
 });
 
 test('registry: lists every adapter', () => {

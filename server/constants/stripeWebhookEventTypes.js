@@ -3,8 +3,6 @@
  * Unlisted events still return 200 after signature verification.
  */
 module.exports = new Set([
-  // Connect account onboarding (providers) — requires "Listen to events on
-  // connected accounts" enabled on this webhook endpoint in the Stripe Dashboard.
   'account.updated',
   'balance.available',
   'billing.alert.triggered',

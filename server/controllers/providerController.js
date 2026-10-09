@@ -1,5 +1,6 @@
 const Provider = require('../models/Provider');
 const { PortfolioImagesParseError } = require('../utils/portfolioImages');
+const { normalizeImageCrop } = require('../utils/imageCrop');
 const { serializeProviderRow, serializeProviderRows } = require('../utils/serializeProvider');
 const { searchProviders } = require('../discovery/search');
 const {
@@ -7,6 +8,8 @@ const {
   isValidProviderTier,
 } = require('../utils/providerTier');
 const { isValidPremiumCommissionPercent } = require('../utils/commission');
+const { assertProviderCanBeActivated } = require('../utils/providerTaxIds');
+const { sendProviderVatReminder } = require('../services/providerVatReminderService');
 
 const ACTIVITY_TYPES = new Set(['service', 'goods', 'both']);
 
@@ -19,11 +22,8 @@ function parseTierFilter(rawTier) {
   return { ok: true, value: rawTier };
 }
 
-// Stripe Connect fields are only ever written by server-side controllers
-// (stripeConnectController) or the account.updated webhook — never by client
-// request bodies. Stripping them here prevents mass-assignment: without this,
-// any authenticated caller who could reach this endpoint could rewrite a
-// provider's stripe_account_id and redirect their future payouts.
+// Leftover Stripe Connect columns on existing databases must never be writable
+// from a client body. Payouts are in-app bank-transfer orders, not Connect accounts.
 const STRIPE_CONNECT_FIELDS = [
   'stripe_account_id',
   'stripe_connect_status',
@@ -69,6 +69,22 @@ function normalizeProviderPayload(body = {}, req = null) {
 
   if (Object.prototype.hasOwnProperty.call(data, 'suggested_category_name') && data.suggested_category_name != null) {
     data.suggested_category_name = String(data.suggested_category_name).trim().slice(0, 150);
+  }
+
+  for (const field of ['photo_crop', 'banner_crop']) {
+    if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
+    const parsed = normalizeImageCrop(data[field]);
+    if (!parsed.ok) {
+      return { ok: false, message: `${field} must stay inside the image` };
+    }
+    data[field] = parsed.value;
+  }
+
+  // Status transitions to "active" go through updateStatus (tax-ID checks).
+  // Non-admins must never self-activate via the generic update payload.
+  if (req?.user?.role !== 'admin') {
+    delete data.status;
+    delete data.is_verified;
   }
 
   delete data.structure_type;
@@ -208,7 +224,19 @@ module.exports = {
       const struct = normalizeStructureForWrite(req.body, null);
       if (!struct.ok) return res.status(400).json({ error: struct.message });
 
-      const row = await Provider.create({ ...normalized.data, ...struct.data });
+      const createData = { ...normalized.data, ...struct.data };
+      if (createData.status === 'active') {
+        const gate = assertProviderCanBeActivated(createData);
+        if (!gate.ok) {
+          return res.status(422).json({
+            error: gate.error,
+            code: gate.code,
+            missing: gate.missing,
+          });
+        }
+      }
+
+      const row = await Provider.create(createData);
       return res.status(201).json(serializeProviderRow(row));
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -236,7 +264,20 @@ module.exports = {
       const struct = normalizeStructureForWrite(req.body, existing);
       if (!struct.ok) return res.status(400).json({ error: struct.message });
 
-      const row = await Provider.update(req.params.id, { ...normalized.data, ...struct.data });
+      const updateData = { ...normalized.data, ...struct.data };
+      const nextStatus = updateData.status !== undefined ? updateData.status : existing.status;
+      if (nextStatus === 'active') {
+        const gate = assertProviderCanBeActivated({ ...existing, ...updateData });
+        if (!gate.ok) {
+          return res.status(422).json({
+            error: gate.error,
+            code: gate.code,
+            missing: gate.missing,
+          });
+        }
+      }
+
+      const row = await Provider.update(req.params.id, updateData);
       if (!row) return res.status(404).json({ error: 'Not found' });
       return res.json(serializeProviderRow(row));
     } catch (err) {
@@ -255,8 +296,30 @@ module.exports = {
       }
       const existing = await Provider.findById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      if (status === 'active') {
+        const gate = assertProviderCanBeActivated(existing);
+        if (!gate.ok) {
+          return res.status(422).json({
+            error: gate.error,
+            code: gate.code,
+            missing: gate.missing,
+          });
+        }
+      }
+
       const row = await Provider.update(req.params.id, { status });
       return res.json(serializeProviderRow(row));
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
+  remindVat: async (req, res) => {
+    try {
+      const out = await sendProviderVatReminder(req.params.id);
+      if (!out.ok) return res.status(out.code || 500).json({ error: out.error });
+      return res.json({ success: true, emailed: out.emailed, missing: out.missing });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

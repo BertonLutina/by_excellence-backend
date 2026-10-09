@@ -141,19 +141,17 @@ module.exports = {
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
   /**
-   * Signing secret for the SEPARATE "Comptes connectés" (Connect) webhook
-   * destination — POST /api/stripe/webhook/connect. Stripe's Workbench UI
-   * requires two distinct destinations (and therefore two distinct secrets)
-   * for "Votre compte" vs "Comptes connectés" event scopes; STRIPE_WEBHOOK_SECRET
-   * alone cannot verify both.
-   */
-  STRIPE_CONNECT_WEBHOOK_SECRET: process.env.STRIPE_CONNECT_WEBHOOK_SECRET || '',
-  /**
    * Opt-in instant-pay mode (skips Stripe and marks payments paid immediately).
    * Useful for local testing without Stripe configured. By default, sandbox keys
    * (`sk_test_*`) hit the real Stripe sandbox.
    */
   STRIPE_BYPASS: bool(process.env.STRIPE_BYPASS, false),
+
+  /**
+   * Partnership split is calculated and stored. This flag does not move money:
+   * provider nets are paid later as in-app bank transfers, not via Stripe.
+   */
+  PARTNERSHIP_SPLIT_PAYOUTS_ENABLED: bool(process.env.PARTNERSHIP_SPLIT_PAYOUTS_ENABLED, false),
 
   /** Checkout Session ui_mode=elements (see POST /api/stripe/create-checkout-session) */
   STRIPE_ELEMENTS_PRICE_ID: (process.env.STRIPE_ELEMENTS_PRICE_ID || '').trim(),
@@ -161,11 +159,4 @@ module.exports = {
   STRIPE_ELEMENTS_RETURN_PATH: (process.env.STRIPE_ELEMENTS_RETURN_PATH || '/#/stripecheckoutcomplete').trim(),
   /** Requires Stripe Tax setup on the account */
   STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX: bool(process.env.STRIPE_CHECKOUT_ELEMENTS_AUTOMATIC_TAX, false),
-
-  /** Stripe Connect (provider payouts) — country the Express accounts are created in. */
-  STRIPE_CONNECT_COUNTRY: (process.env.STRIPE_CONNECT_COUNTRY || 'FR').trim().toUpperCase(),
-  /** Path on FRONTEND_ORIGIN Stripe redirects to if the onboarding link expired/was abandoned. */
-  STRIPE_CONNECT_REFRESH_PATH: (process.env.STRIPE_CONNECT_REFRESH_PATH || '/#/providersettings?stripe=refresh').trim(),
-  /** Path on FRONTEND_ORIGIN Stripe redirects to once onboarding is submitted (not necessarily verified yet). */
-  STRIPE_CONNECT_RETURN_PATH: (process.env.STRIPE_CONNECT_RETURN_PATH || '/#/providersettings?stripe=return').trim(),
 };

@@ -1,6 +1,25 @@
-const { APP_URL } = require('../../constants/constant');
+const { APP_URL, FRONTEND_ORIGIN } = require('../../constants/constant');
 const BRAND_COLOR = '#0a0a5c';
 const ACCENT = '#d4a848';
+
+const DEFAULT_FRONTEND_ORIGIN = 'https://byexcellence-as.com';
+
+/** BrowserRouter paths are lowercase (see by-excellence createPageUrl / App.jsx). */
+function buildFrontendPageUrl(origin, pageName, query = {}) {
+  const base = String(origin || DEFAULT_FRONTEND_ORIGIN).replace(/\/$/, '');
+  const path = `/${String(pageName || '').replace(/\s+/g, '-').toLowerCase()}`;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query || {})) {
+    if (value == null || value === '') continue;
+    params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return `${base}${path}${qs ? `?${qs}` : ''}`;
+}
+
+function frontendPageUrl(pageName, query = {}) {
+  return buildFrontendPageUrl(FRONTEND_ORIGIN || APP_URL, pageName, query);
+}
 
 const base = (content) => `
 <!DOCTYPE html>
@@ -51,7 +70,7 @@ const h1 = (text) => `<h1 style="margin:0 0 8px;font-size:22px;font-weight:700;c
 const p = (text) => `<p style="margin:0 0 16px;font-size:15px;color:#4b5563;line-height:1.6;">${text}</p>`;
 
 const verificationEmail = ({ full_name, token }) => {
-  const link = `${APP_URL}/VerifyEmail?token=${token}`;
+  const link = frontendPageUrl('VerifyEmail', { token });
   return base(`
     ${h1('Vérifiez votre adresse email')}
     ${p(`Bonjour ${full_name || 'là'}, bienvenue sur By Excellence !`)}
@@ -62,7 +81,7 @@ const verificationEmail = ({ full_name, token }) => {
 };
 
 const resetPasswordEmail = ({ full_name, token }) => {
-  const link = `${APP_URL}/ResetPassword?token=${token}`;
+  const link = frontendPageUrl('ResetPassword', { token });
   return base(`
     ${h1('Réinitialisation de mot de passe')}
     ${p(`Bonjour ${full_name || 'là'},`)}
@@ -112,7 +131,7 @@ const AUTO_CLIENT_I18N = {
 const autoClientAccountEmail = ({ full_name, email, temp_password, locale = 'fr' }) => {
   const lang = AUTO_CLIENT_I18N[locale] ? locale : 'fr';
   const txt = AUTO_CLIENT_I18N[lang];
-  const loginLink = `${APP_URL}/#/login`;
+  const loginLink = frontendPageUrl('Login');
   return base(`
     ${h1(txt.title)}
     ${p(txt.greeting(full_name))}
@@ -127,4 +146,4 @@ const autoClientAccountEmail = ({ full_name, email, temp_password, locale = 'fr'
   `);
 };
 
-module.exports = { verificationEmail, resetPasswordEmail, autoClientAccountEmail };
+module.exports = { verificationEmail, resetPasswordEmail, autoClientAccountEmail, buildFrontendPageUrl, frontendPageUrl };

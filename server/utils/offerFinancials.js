@@ -97,6 +97,8 @@ function applyOfferFinancials(body, provider) {
 
 module.exports = {
   computeOfferFinancials,
+  lineAmount,
+  roundMoney2,
   normalizeCommissionMode,
   resolvePaymentFlow,
   applyOfferFinancials,

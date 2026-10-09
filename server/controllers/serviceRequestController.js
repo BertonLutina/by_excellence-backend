@@ -28,6 +28,7 @@ const {
   syncCollaboratorsFromCombo,
   listRequestIdsForProvider,
 } = require('../services/serviceRequestCollaborationService');
+const { applyPartnershipToCreateBody, PartnershipError } = require('../services/providerPartnershipService');
 const { isAdmin, providerIdForUser, isRequestClient, pickFields } = require('../utils/entityAccess');
 const { assertCanViewRequest } = require('./serviceRequestCollaboratorController');
 
@@ -248,6 +249,20 @@ const create = async (req, res) => {
     const locale = pickLocale(req, body);
     const isOpenRequest = body.is_open_request === true || body.is_open_request === 'true';
 
+    const partnershipId = Number(body.partnership_id);
+    if (Number.isFinite(partnershipId) && partnershipId > 0) {
+      if (isOpenRequest) {
+        return res.status(400).json({ error: 'Open requests cannot be partnership combos' });
+      }
+      try {
+        const applied = await applyPartnershipToCreateBody(body, partnershipId);
+        Object.assign(body, applied);
+      } catch (err) {
+        const status = err instanceof PartnershipError ? err.status : 400;
+        return res.status(status).json({ error: err.message });
+      }
+    }
+
     let provider_id = normalizeProviderId(body.provider_id);
     if (isOpenRequest) {
       provider_id = null;
@@ -384,6 +399,9 @@ const create = async (req, res) => {
       is_open_request: isOpenRequest,
       combo_payload: comboForModel,
       selected_items: selectedForModel,
+      partnership_id: Number.isFinite(Number(body.partnership_id)) && Number(body.partnership_id) > 0
+        ? Number(body.partnership_id)
+        : null,
       preferred_date: body.preferred_date || null,
       budget: body.budget != null ? String(body.budget) : null,
       status,

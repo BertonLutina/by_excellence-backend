@@ -6,8 +6,9 @@ const { sanitizeFilters, resolveSortColumn } = require('../utils/sqlQueryGuards'
 const TABLE = 'payments';
 const COLUMNS = [
   'id', 'request_id', 'offer_id', 'type', 'installment_index', 'installment_total',
-  'amount', 'commission_rate_percent', 'admin_commission_amount', 'provider_net_amount',
-  'status', 'paid_date', 'due_date', 'payment_method', 'invoice_url', 'created_at', 'updated_date',
+  'amount', 'commission_rate_percent', 'admin_commission_amount', 'provider_net_amount', 'stripe_fee_amount',
+  'status', 'escrow_status', 'auto_release_at', 'paid_date', 'due_date', 'payment_method', 'invoice_url',
+  'created_at', 'updated_date',
 ];
 
 class Payment extends BaseModel {
@@ -23,7 +24,10 @@ class Payment extends BaseModel {
     this.commission_rate_percent = body?.commission_rate_percent;
     this.admin_commission_amount = body?.admin_commission_amount;
     this.provider_net_amount = body?.provider_net_amount;
+    this.stripe_fee_amount = body?.stripe_fee_amount;
     this.status = body?.status;
+    this.escrow_status = body?.escrow_status;
+    this.auto_release_at = body?.auto_release_at;
     this.paid_date = body?.paid_date;
     this.due_date = body?.due_date;
     this.payment_method = body?.payment_method;

@@ -3,9 +3,7 @@ const ServiceRequest = require('../models/ServiceRequest');
 const Offer = require('../models/Offer');
 const paymentCommissionService = require('./paymentCommissionService');
 const { computeFinalPaymentDueDate } = require('../utils/paymentWindow');
-const { buildInvoiceDataUrl } = require('./invoicePdfService');
-const { uploadBuffer } = require('./objectStorage');
-const constants = require('../../constants/constant');
+const { ensurePaymentInvoiceStored } = require('./invoicePdfService');
 const { notifyRequestStatusChange } = require('./notificationService');
 
 function mysqlDateTime(iso) {
@@ -114,14 +112,16 @@ async function markPaymentPaid(paymentId, options = {}) {
   const commission = await paymentCommissionService.commissionFieldsForPaidTransition(payment);
   const paidDate = mysqlDateTime(new Date().toISOString());
 
-  await Payment.update(paymentId, {
+  const paidPatch = {
     status: 'paid',
     paid_date: paidDate,
     payment_method: options.payment_method || 'card',
     commission_rate_percent: commission.commission_rate_percent,
     admin_commission_amount: commission.admin_commission_amount,
     provider_net_amount: commission.provider_net_amount,
-  });
+  };
+  if (paidPatch.payment_method === 'cash' || !options.fromWebhook) paidPatch.stripe_fee_amount = 0;
+  await Payment.update(paymentId, paidPatch);
 
   const fresh = await Payment.findById(paymentId);
   const request = await ServiceRequest.findById(fresh.request_id);
@@ -134,22 +134,10 @@ async function markPaymentPaid(paymentId, options = {}) {
     await ensureFinalPaymentAfterDeposit(fresh);
   }
 
-  // Auto-generate and store invoice PDF URL (non-blocking)
-  (async () => {
-    try {
-      const offer = fresh.offer_id ? await Offer.findById(fresh.offer_id) : null;
-      const dataUrl = await buildInvoiceDataUrl(fresh, request, offer);
-      const base64 = dataUrl.replace(/^data:application\/pdf;base64,/, '');
-      const buffer = Buffer.from(base64, 'base64');
-      const { publicUrl } = await uploadBuffer(
-        { buffer, mime: 'application/pdf', ext: '.pdf', entity: 'invoice' },
-        constants
-      );
-      await Payment.update(paymentId, { invoice_url: publicUrl });
-    } catch (e) {
-      console.warn('[invoice] auto-save failed:', e.message);
-    }
-  })();
+  // Persist invoice PDF for later download / email attachment (non-blocking).
+  ensurePaymentInvoiceStored(paymentId).catch((e) => {
+    console.warn('[invoice] auto-save failed:', e.message);
+  });
 
   return { ok: true, payment: fresh, request };
 }

@@ -4,6 +4,7 @@ const { executeSQL } = require('../db/db');
 const { notifyOfferStatusChange } = require('../services/notificationService');
 const { applyOfferFinancials } = require('../utils/offerFinancials');
 const { providerCanCreateOffer } = require('../services/serviceRequestCollaborationService');
+const { attachSplitToOfferBody } = require('../services/providerPartnershipService');
 const { isAdmin, providerIdForUser, isOfferProvider, isOfferClient, pickFields } = require('../utils/entityAccess');
 
 const base = createEntityController(Offer, 'Offer');
@@ -21,12 +22,25 @@ async function loadProvider(providerId) {
   return list[0] || null;
 }
 
+async function attachPartnershipFromRequest(body) {
+  const requestId = Number(body?.request_id);
+  if (!Number.isFinite(requestId) || requestId <= 0) return body;
+  const rows = await executeSQL('SELECT partnership_id FROM service_requests WHERE id = ? LIMIT 1', [requestId]);
+  const request = Array.isArray(rows) ? rows[0] : rows;
+  const partnershipId = Number(request?.partnership_id);
+  if (!Number.isFinite(partnershipId) || partnershipId <= 0) {
+    return { ...body, partnership_id: body.partnership_id ?? null };
+  }
+  return attachSplitToOfferBody(body, partnershipId);
+}
+
 async function prepareOfferBody(body) {
   const providerId = body?.provider_id;
   if (!providerId) return body;
   const provider = await loadProvider(providerId);
   if (!provider) throw new Error('Invalid provider_id');
-  return applyOfferFinancials(body, provider);
+  const priced = applyOfferFinancials(body, provider);
+  return attachPartnershipFromRequest(priced);
 }
 
 /** Filters a non-admin may pass to the list endpoint. */

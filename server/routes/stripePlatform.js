@@ -11,14 +11,6 @@ const router = express.Router();
 
 const chain = [authenticate, requireRole('admin'), requireStripeConfigured];
 
-// --- payouts (specific POSTs before generic :id) ---
-router.post('/payouts/:id/cancel', chain, ctrl.payoutsCancel);
-router.post('/payouts/:id/reverse', chain, ctrl.payoutsReverse);
-router.post('/payouts/:id', chain, ctrl.payoutsUpdate);
-router.post('/payouts', chain, ctrl.payoutsCreate);
-router.get('/payouts/:id', chain, ctrl.payoutsRetrieve);
-router.get('/payouts', chain, ctrl.payoutsList);
-
 // --- payment_methods ---
 router.post('/payment_methods/:id/detach', chain, ctrl.paymentMethodsDetach);
 router.post('/payment_methods/:id/attach', chain, ctrl.paymentMethodsAttach);

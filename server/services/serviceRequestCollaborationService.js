@@ -150,9 +150,13 @@ async function removeCollaborator(requestId, providerId) {
 async function providerCanCreateOffer(requestId, providerId) {
   const rid = Number(requestId);
   const pid = Number(providerId);
-  const requestRows = await executeSQL('SELECT provider_id, is_combo FROM service_requests WHERE id = ?', [rid]);
+  const requestRows = await executeSQL('SELECT provider_id, is_combo, partnership_id FROM service_requests WHERE id = ?', [rid]);
   const request = Array.isArray(requestRows) ? requestRows[0] : requestRows;
   if (!request) return false;
+
+  if (request.partnership_id) {
+    return Number(request.provider_id) === pid;
+  }
 
   if (Number(request.provider_id) === pid) return true;
 

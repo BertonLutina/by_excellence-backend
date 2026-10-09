@@ -1,8 +1,8 @@
 const createEntityController = require('./createEntityController');
 const Payment = require('../models/Payment');
 const Offer = require('../models/Offer');
-const paymentCommissionService = require('../services/paymentCommissionService');
-const { updateServiceRequestStatusAfterPayment } = require('../services/paymentPostProcessService');
+const { markPaymentPaid } = require('../services/paymentPostProcessService');
+const { sendPaymentConfirmationEmail } = require('../services/paymentConfirmationEmail');
 const { getPaymentWindowStatus } = require('../utils/paymentWindow');
 const ServiceRequest = require('../models/ServiceRequest');
 const { executeSQL } = require('../db/db');
@@ -152,7 +152,7 @@ const create = async (req, res) => {
   }
 };
 
-/** Status transitions (→ paid) trigger commission math: admin only. Stripe webhooks update via services, not this route. */
+/** Status transitions (→ paid) go through markPaymentPaid + invoice email: admin only. */
 const update = async (req, res) => {
   try {
     if (!isAdmin(req.user)) return res.status(403).json({ error: 'Forbidden' });
@@ -163,17 +163,21 @@ const update = async (req, res) => {
     const becomingPaid = body.status === 'paid' && existing.status !== 'paid';
 
     if (becomingPaid) {
-      const commissionFields = await paymentCommissionService.commissionFieldsForPaidTransition(existing);
-      Object.assign(body, commissionFields);
-      if (body.paid_date == null) body.paid_date = new Date();
+      const result = await markPaymentPaid(req.params.id, {
+        payment_method: body.payment_method || 'cash',
+        fromWebhook: false,
+      });
+      if (!result.ok) {
+        return res.status(result.code || 400).json({ error: result.error || 'Payment update failed' });
+      }
+      sendPaymentConfirmationEmail(req.params.id).catch((e) =>
+        console.error('[Payment.update] confirmation email:', e.message)
+      );
+      return res.json(result.payment);
     }
 
     const row = await Payment.update(req.params.id, body);
     if (!row) return res.status(404).json({ error: 'Not found' });
-    if (becomingPaid && row.type === 'goods_full') {
-      const request = await ServiceRequest.findById(row.request_id);
-      await updateServiceRequestStatusAfterPayment(row, request, { fromWebhook: false });
-    }
     return res.json(row);
   } catch (err) {
     return res.status(500).json({ error: err.message });

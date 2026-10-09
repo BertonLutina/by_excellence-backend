@@ -2,7 +2,7 @@
 const BaseModel = require('./BaseModel');
 
 const TABLE = 'clients';
-const COLUMNS = ['id', 'user_id', 'full_name', 'phone', 'status', 'created_at', 'updated_date'];
+const COLUMNS = ['id', 'user_id', 'full_name', 'phone', 'vat_number', 'status', 'created_at', 'updated_date'];
 
 class Client extends BaseModel {
   constructor(body = {}) {
@@ -11,6 +11,7 @@ class Client extends BaseModel {
     this.user_id = body?.user_id;
     this.full_name = body?.full_name;
     this.phone = body?.phone;
+    this.vat_number = body?.vat_number;
     this.status = body?.status;
     this.created_at = body?.created_at;
     this.updated_date = body?.updated_date;

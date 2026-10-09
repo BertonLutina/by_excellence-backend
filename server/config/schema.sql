@@ -33,6 +33,7 @@ CREATE TABLE users (
     role_id BIGINT UNSIGNED NOT NULL,
     is_email_verified BOOLEAN DEFAULT FALSE,
     email_notifications JSON NULL,
+    in_app_notifications JSON NULL,
     verification_token VARCHAR(255),
     verification_token_expires DATETIME,
     reset_token VARCHAR(255),
@@ -56,6 +57,7 @@ CREATE TABLE clients (
     user_id BIGINT UNSIGNED NOT NULL,
     full_name VARCHAR(150),
     phone VARCHAR(50),
+    vat_number VARCHAR(50) NULL,
     status ENUM('active','inactive','pending') NOT NULL DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -113,7 +115,12 @@ CREATE TABLE providers (
     bio TEXT,
     photo_url TEXT,
     banner_url TEXT,
+    photo_original_url TEXT NULL,
+    banner_original_url TEXT NULL,
+    photo_crop JSON NULL,
+    banner_crop JSON NULL,
     city VARCHAR(150),
+    phone VARCHAR(50) NULL,
     category_id BIGINT UNSIGNED,
     activity_type ENUM('service','goods','both') NOT NULL DEFAULT 'service',
     suggested_category_name VARCHAR(150) NULL,
@@ -122,6 +129,7 @@ CREATE TABLE providers (
     provider_tier ENUM('standard','premium') NULL,
     premium_commission_percent DECIMAL(5,2) NULL COMMENT '20 or 30 for premium tier; NULL uses default 20%',
     portfolio_images JSON,
+    career_highlights JSON NULL,
     is_verified BOOLEAN DEFAULT FALSE,
     rating DECIMAL(3,2),
     review_count INT DEFAULT 0,
@@ -135,9 +143,15 @@ CREATE TABLE providers (
     coords JSON,
     insurance_certificate TEXT,
     video_url TEXT,
+    website_url VARCHAR(500) NULL,
+    facebook_url VARCHAR(500) NULL,
+    instagram_url VARCHAR(500) NULL,
+    tiktok_url VARCHAR(500) NULL,
+    linkedin_url VARCHAR(500) NULL,
+    youtube_url VARCHAR(500) NULL,
+    social_reels JSON NULL,
     access TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=visible in webapp, 0=no access',
     status_verification TINYINT NOT NULL DEFAULT 0 COMMENT '0=nothing, 1=sent, 2=in treatment, 3=accepted, 4=refused',
-    stripe_account_id VARCHAR(255) NULL COMMENT 'Stripe Connect account id for provider payouts (acct_...)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -150,9 +164,13 @@ CREATE TABLE providers (
     INDEX idx_provider_rating (rating),
     INDEX idx_provider_tier (provider_tier),
     INDEX idx_provider_access (access),
-    INDEX idx_provider_status_verification (status_verification),
-    INDEX idx_provider_stripe_account_id (stripe_account_id)
+    INDEX idx_provider_status_verification (status_verification)
 ) ENGINE=InnoDB;
+
+-- Existing databases may still have unused Stripe Connect columns
+-- (stripe_account_id, stripe_connect_status, stripe_payouts_enabled,
+-- stripe_connect_requested_at). The app no longer reads or writes them.
+-- Do not DROP them in this change.
 
 -- =====================================================
 -- PROVIDER AVAILABILITY
@@ -164,6 +182,8 @@ CREATE TABLE provider_availability (
     start_time TIME,
     end_time TIME,
     is_available BOOLEAN DEFAULT TRUE,
+    booking_type ENUM('time_slot','full_day') NOT NULL DEFAULT 'time_slot',
+    program_note VARCHAR(280) NULL,
     UNIQUE KEY uq_provider_day (provider_id, day_of_week),
     INDEX idx_availability_provider (provider_id),
     CONSTRAINT fk_availability_provider FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
@@ -216,6 +236,9 @@ CREATE TABLE service_requests (
     service_description TEXT NOT NULL,
     is_combo BOOLEAN NOT NULL DEFAULT FALSE,
     combo_payload JSON NULL,
+    selected_items JSON NULL,
+    is_open_request BOOLEAN NOT NULL DEFAULT FALSE,
+    partnership_id BIGINT UNSIGNED NULL,
     preferred_date DATE,
     budget VARCHAR(100),
     status ENUM(
@@ -241,7 +264,8 @@ CREATE TABLE service_requests (
     INDEX idx_request_provider (provider_id),
     INDEX idx_request_client (client_id),
     INDEX idx_request_status (status),
-    INDEX idx_request_provider_status (provider_id, status)
+    INDEX idx_request_provider_status (provider_id, status),
+    INDEX idx_request_partnership (partnership_id)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -259,6 +283,8 @@ CREATE TABLE offers (
     deposit_percentage DECIMAL(5,2),
     commission_mode ENUM('included','on_top') NOT NULL DEFAULT 'included',
     payment_flow ENUM('deposit_flow','direct_full_payment') NOT NULL DEFAULT 'deposit_flow',
+    partnership_id BIGINT UNSIGNED NULL,
+    partnership_split JSON NULL,
     conditions TEXT,
     valid_until DATE,
     status ENUM('draft','sent_to_admin','sent_to_client','accepted','rejected','expired') DEFAULT 'draft',
@@ -273,7 +299,8 @@ CREATE TABLE offers (
 
     INDEX idx_offer_request (request_id),
     INDEX idx_offer_provider (provider_id),
-    INDEX idx_offer_status (status)
+    INDEX idx_offer_status (status),
+    INDEX idx_offer_partnership (partnership_id)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -290,6 +317,7 @@ CREATE TABLE payments (
     commission_rate_percent DECIMAL(5,2) NULL,
     admin_commission_amount DECIMAL(10,2) NULL,
     provider_net_amount DECIMAL(10,2) NULL,
+    stripe_fee_amount DECIMAL(10,2) NULL COMMENT 'Stripe processing fee in major units, 0 for cash',
     status ENUM('pending','paid','failed','refunded') DEFAULT 'pending',
     paid_date DATETIME,
     payment_method VARCHAR(100),
@@ -304,6 +332,55 @@ CREATE TABLE payments (
     INDEX idx_payment_offer (offer_id),
     INDEX idx_payment_status (status),
     INDEX idx_payment_type (type)
+) ENGINE=InnoDB;
+
+-- =====================================================
+-- PROVIDER PAYOUTS
+-- In-app bank-transfer orders. Client funds stay on the By Excellence
+-- Stripe account; an admin records the later bank transfer here.
+-- No Stripe transfer or payout is created from this table.
+-- =====================================================
+CREATE TABLE provider_payouts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    payment_id BIGINT UNSIGNED NOT NULL,
+    provider_id BIGINT UNSIGNED NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'EUR',
+    status ENUM('to_pay','paid') NOT NULL DEFAULT 'to_pay',
+    created_by BIGINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paid_at DATETIME NULL,
+    paid_by BIGINT UNSIGNED NULL,
+    bank_reference VARCHAR(140) NULL,
+
+    UNIQUE KEY uq_provider_payout_payment (payment_id),
+    CONSTRAINT fk_payout_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE,
+    CONSTRAINT fk_payout_provider FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    CONSTRAINT fk_payout_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_payout_paid_by FOREIGN KEY (paid_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_provider_payout_status (status),
+    INDEX idx_provider_payout_provider (provider_id)
+) ENGINE=InnoDB;
+
+-- =====================================================
+-- PERSONAL PLANNING (admin / provider private to-do)
+-- Separate from mission calendars and provider_availability.
+-- =====================================================
+CREATE TABLE personal_planning_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    notes TEXT NULL,
+    plan_date DATE NULL,
+    start_time TIME NULL,
+    end_time TIME NULL,
+    is_done BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_personal_planning_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_personal_planning_user_date (user_id, plan_date),
+    INDEX idx_personal_planning_user_done (user_id, is_done)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -525,6 +602,47 @@ BEGIN
 END$$
 
 DELIMITER ;
+
+-- =====================================================
+-- PROVIDER PARTNERSHIPS (standing A–B, beside per-request collab)
+-- =====================================================
+CREATE TABLE provider_partnerships (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    lead_provider_id BIGINT UNSIGNED NOT NULL,
+    partner_provider_id BIGINT UNSIGNED NOT NULL,
+    status ENUM('invited','accepted','declined','paused','ended','expired') NOT NULL DEFAULT 'invited',
+    starts_at DATETIME NULL,
+    ends_at DATETIME NULL,
+    scope_type ENUM('all','items') NOT NULL DEFAULT 'all',
+    lead_share_percent DECIMAL(5,2) NOT NULL DEFAULT 50.00,
+    is_public BOOLEAN NOT NULL DEFAULT TRUE,
+    combo_title VARCHAR(255) NULL,
+    combo_description TEXT NULL,
+    combo_price_from DECIMAL(10,2) NULL,
+    combo_image_url VARCHAR(500) NULL,
+    contract_version VARCHAR(32) NOT NULL DEFAULT 'v1',
+    lead_contract_accepted_at DATETIME NULL,
+    partner_contract_accepted_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_pp_lead FOREIGN KEY (lead_provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    CONSTRAINT fk_pp_partner FOREIGN KEY (partner_provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    INDEX idx_pp_lead (lead_provider_id, status),
+    INDEX idx_pp_partner (partner_provider_id, status)
+) ENGINE=InnoDB;
+
+CREATE TABLE provider_partnership_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    partnership_id BIGINT UNSIGNED NOT NULL,
+    service_item_id BIGINT UNSIGNED NULL,
+    owner_provider_id BIGINT UNSIGNED NOT NULL,
+
+    CONSTRAINT fk_ppi_partnership FOREIGN KEY (partnership_id) REFERENCES provider_partnerships(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ppi_item FOREIGN KEY (service_item_id) REFERENCES service_items(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ppi_owner FOREIGN KEY (owner_provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    INDEX idx_ppi_partnership (partnership_id)
+) ENGINE=InnoDB;
 
 -- =====================================================
 -- END OF FULL BY_EXCELLENCE SCHEMA

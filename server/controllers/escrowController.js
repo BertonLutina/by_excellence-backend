@@ -6,15 +6,13 @@
  * flow is untouched, and these routes stay inert until called. They require the
  * escrow columns — run: node server/scripts/add-escrow-columns.js
  *
- * Payout on release is best-effort: the escrow state advances first, then a payout
- * is attempted through the payment-provider layer; a missing gateway key logs and
- * is retried later rather than blocking the state transition.
+ * Releasing escrow means the provider net is due and can be queued as an in-app
+ * bank-transfer order. It does not move the Stripe balance.
  */
 const Payment = require('../models/Payment');
 const Dispute = require('../models/Dispute');
 const { executeSQL } = require('../db/db');
 const escrow = require('../payments/escrow');
-const payments = require('../payments');
 const { isAdmin, isRequestClient, providerIdForUser } = require('../utils/entityAccess');
 
 const DEFAULT_HOLD_DAYS = Number(process.env.ESCROW_HOLD_DAYS) || 3;
@@ -39,24 +37,13 @@ async function isRequestProvider(requestId, userId) {
   return sr != null && Number(sr.provider_id) === pid;
 }
 
-/** Best-effort settlement to the provider; never throws. */
-async function attemptPayout(payment) {
-  try {
-    const gw = payments.getPaymentProvider({
-      provider: payment.payment_provider,
-      currency: payment.currency,
-    });
-    await gw.createPayout({
-      amount: Number(payment.provider_net_amount) || 0,
-      currency: payment.currency || 'USD',
-      reference: `payout-${payment.id}`,
-      destination: {},
-    });
-    return { paid_out: true };
-  } catch (err) {
-    console.warn(`[escrow] payout for payment ${payment?.id} deferred:`, err.message);
-    return { paid_out: false, reason: err.message };
-  }
+/** Funds stay on the platform. The net is due; an admin records the bank transfer separately. */
+function settlementDue(payment) {
+  return {
+    paid_out: false,
+    provider_net_due: true,
+    amount: Number(payment?.provider_net_amount) || 0,
+  };
 }
 
 async function applyAndSave(payment, event, extra = {}) {
@@ -78,8 +65,7 @@ module.exports = {
       if (!allowed) return res.status(403).json({ error: 'Forbidden' });
 
       const next = await applyAndSave(payment, escrow.ESCROW_EVENT.CONFIRM_DELIVERY);
-      const payout = await attemptPayout(payment);
-      return res.json({ escrow_status: next, ...payout });
+      return res.json({ escrow_status: next, ...settlementDue(payment) });
     } catch (err) {
       return res.status(err.statusCode || 500).json({ error: err.message, code: err.code });
     }
@@ -137,8 +123,26 @@ module.exports = {
         });
       }
 
-      const payout = resolution === 'release' ? await attemptPayout(payment) : { paid_out: false };
-      return res.json({ escrow_status: next, resolution, ...payout });
+      const settlement = resolution === 'release' ? settlementDue(payment) : { paid_out: false, provider_net_due: false };
+      return res.json({ escrow_status: next, resolution, ...settlement });
+    } catch (err) {
+      return res.status(err.statusCode || 500).json({ error: err.message, code: err.code });
+    }
+  },
+
+  /** Admin: open disputes + payments still held in escrow. */
+  listDisputes: async (req, res) => {
+    try {
+      const [openDisputes, heldPayments, disputedPayments] = await Promise.all([
+        Dispute.findAll({ filters: { status: 'open' }, sort: 'created_at', order: 'DESC', limit: 200 }),
+        Payment.findAll({ filters: { escrow_status: 'held' }, sort: 'created_at', order: 'DESC', limit: 200 }),
+        Payment.findAll({ filters: { escrow_status: 'disputed' }, sort: 'created_at', order: 'DESC', limit: 200 }),
+      ]);
+      return res.json({
+        disputes: Array.isArray(openDisputes) ? openDisputes : [],
+        held: Array.isArray(heldPayments) ? heldPayments : [],
+        disputed: Array.isArray(disputedPayments) ? disputedPayments : [],
+      });
     } catch (err) {
       return res.status(err.statusCode || 500).json({ error: err.message, code: err.code });
     }
@@ -155,7 +159,6 @@ module.exports = {
     for (const p of Array.isArray(rows) ? rows : []) {
       try {
         await applyAndSave(p, escrow.ESCROW_EVENT.AUTO_RELEASE);
-        await attemptPayout(p);
         released += 1;
       } catch (err) {
         console.warn(`[escrow] auto-release failed for payment ${p.id}:`, err.message);

@@ -11,7 +11,7 @@
  *        (client pays)
  *            │
  *            ▼
- *          held ──confirm/auto_release──▶ released   (settle provider net)
+ *          held ──confirm/auto_release──▶ released   (net is due; funds stay on the platform)
  *            │
  *            ├── open_dispute ──▶ disputed ──resolve_release──▶ released
  *            │                        └──────resolve_refund───▶ refunded

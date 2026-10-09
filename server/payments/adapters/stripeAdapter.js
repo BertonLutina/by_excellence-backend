@@ -7,6 +7,7 @@
 const { PaymentProvider, PAYMENT_STATUS, NotConfiguredError } = require('../PaymentProvider');
 const { toMinorUnits } = require('../money');
 const { getStripe } = require('../../utils/stripeClient');
+const { assertPlatformCharge } = require('../../utils/platformCharge');
 
 // Stripe supports many currencies; we advertise '*' and let Stripe reject any it
 // doesn't actually support at charge time.
@@ -16,7 +17,7 @@ class StripeAdapter extends PaymentProvider {
       id: 'stripe',
       methods: ['card'],
       currencies: '*',
-      payouts: true,
+      payouts: false,
       configured: Boolean(getStripe()),
     };
   }
@@ -33,7 +34,7 @@ class StripeAdapter extends PaymentProvider {
     // NOTE: the current app uses a fixed Stripe Price via
     // stripeCheckoutElementsController. This dynamic-amount path is the
     // forward-looking shape; wire whichever the controller needs.
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create(assertPlatformCharge({
       mode: 'payment',
       client_reference_id: reference,
       customer_email: customerEmail || undefined,
@@ -49,7 +50,7 @@ class StripeAdapter extends PaymentProvider {
       ],
       success_url: returnUrl,
       metadata: { reference, ...(metadata || {}) },
-    });
+    }));
     return {
       providerRef: session.id,
       status: PAYMENT_STATUS.PENDING,
@@ -65,14 +66,8 @@ class StripeAdapter extends PaymentProvider {
     return { status, raw: session };
   }
 
-  async createPayout(req) {
-    const stripe = this.#client();
-    const { amount, currency } = req;
-    // Delegates to Stripe payouts (Connect settlement lives in stripePlatformController).
-    return stripe.payouts.create({
-      amount: toMinorUnits(amount, currency),
-      currency: String(currency).toLowerCase(),
-    });
+  async createPayout() {
+    throw new Error('stripe: provider settlement is an in-app bank transfer, not a Stripe payout');
   }
 }
 

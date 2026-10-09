@@ -9,9 +9,26 @@ const Admin = require('../models/Admin');
 const ServiceRequest = require('../models/ServiceRequest');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../../constants/constant');
 const { getEmailPrefs, mergeEmailPrefs } = require('../utils/emailPreferences');
+const { getInAppPrefs, mergeInAppPrefs } = require('../utils/inAppNotificationPreferences');
 
 const ID_TO_ROLE = { 1: 'client', 2: 'provider', 3: 'admin' };
 const roleString = (user) => (user && user.role != null ? ID_TO_ROLE[user.role] ?? String(user.role) : undefined);
+
+async function buildMePayload(user) {
+  const client = await Client.findByUserId(user.id);
+  const provider = await Provider.findByUserId(user.id);
+  const admin = await Admin.findByUserId(user.id);
+  const payload = {
+    ...user,
+    role: roleString(user),
+    email_notifications: getEmailPrefs(user.email_notifications),
+    in_app_notifications: getInAppPrefs(user.in_app_notifications),
+  };
+  if (client) payload.client = client;
+  if (provider) payload.provider = provider;
+  if (admin) payload.admin = admin;
+  return payload;
+}
 
 const signToken = (user) =>
   jwt.sign(
@@ -94,11 +111,7 @@ exports.me = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     await ServiceRequest.attachClientIdByEmail(user.id, user.email).catch(() => {});
-    res.json({
-      ...user,
-      role: roleString(user),
-      email_notifications: getEmailPrefs(user.email_notifications),
-    });
+    res.json(await buildMePayload(user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -183,6 +196,79 @@ exports.updateEmailNotifications = async (req, res) => {
     const merged = mergeEmailPrefs(user.email_notifications, partial);
     await User.updateEmailNotifications(user.id, merged);
     res.json({ email_notifications: merged });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateInAppNotifications = async (req, res) => {
+  try {
+    const partial = req.body?.in_app_notifications ?? req.body;
+    if (!partial || typeof partial !== 'object' || Array.isArray(partial)) {
+      return res.status(400).json({ error: 'in_app_notifications object required' });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const merged = mergeInAppPrefs(user.in_app_notifications, partial);
+    await User.updateInAppNotifications(user.id, merged);
+    res.json({ in_app_notifications: merged });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const full_name =
+      req.body?.full_name !== undefined ? String(req.body.full_name || '').trim() : undefined;
+    const phone = req.body?.phone !== undefined ? String(req.body.phone || '').trim() : undefined;
+    const vat_number =
+      req.body?.vat_number !== undefined ? String(req.body.vat_number || '').trim().toUpperCase() : undefined;
+    let email = req.body?.email !== undefined ? String(req.body.email || '').trim().toLowerCase() : undefined;
+
+    if (full_name !== undefined && full_name.length < 2) {
+      return res.status(400).json({ error: 'full_name too short' });
+    }
+    if (email !== undefined) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: 'Invalid email' });
+      }
+      if (email !== String(user.email || '').toLowerCase()) {
+        const existing = await User.findByEmail(email);
+        if (existing && Number(existing.id) !== Number(user.id)) {
+          return res.status(409).json({ error: 'Email already registered' });
+        }
+      } else {
+        email = undefined;
+      }
+    }
+
+    const userPatch = {};
+    if (full_name !== undefined) userPatch.full_name = full_name;
+    if (email !== undefined) userPatch.email = email;
+    if (Object.keys(userPatch).length) {
+      await User.update(user.id, userPatch);
+    }
+
+    const role = roleString(user);
+    if (role === 'client' && (full_name !== undefined || phone !== undefined || vat_number !== undefined)) {
+      const client = await Client.findByUserId(user.id);
+      if (client) {
+        const clientPatch = {};
+        if (full_name !== undefined) clientPatch.full_name = full_name;
+        if (phone !== undefined) clientPatch.phone = phone || null;
+        if (vat_number !== undefined) clientPatch.vat_number = vat_number || null;
+        if (Object.keys(clientPatch).length) {
+          await Client.update(client.id, clientPatch);
+        }
+      }
+    }
+
+    const refreshed = await User.findById(user.id);
+    res.json(await buildMePayload(refreshed));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

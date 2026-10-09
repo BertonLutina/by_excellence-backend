@@ -17,6 +17,7 @@ const COLUMNS = [
   'is_open_request',
   'combo_payload',
   'selected_items',
+  'partnership_id',
   'preferred_date',
   'budget',
   'status',
@@ -65,6 +66,7 @@ class ServiceRequest extends BaseModel {
     } else {
       this.selected_items = body?.selected_items;
     }
+    this.partnership_id = body?.partnership_id;
     this.preferred_date = body?.preferred_date;
     this.budget = body?.budget;
     this.status = body?.status;

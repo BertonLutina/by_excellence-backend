@@ -22,6 +22,8 @@ const EMAIL_PREF_KEYS = [
   'combo.request',
   'collaboration.invite',
   'collaboration.response',
+  'partnership.invite',
+  'partnership.response',
 ];
 
 const DEFAULT_EMAIL_PREFS = Object.fromEntries(EMAIL_PREF_KEYS.map((k) => [k, true]));

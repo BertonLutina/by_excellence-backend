@@ -7,6 +7,7 @@ const {
 } = require('../../constants/constant');
 const { getStripe } = require('../utils/stripeClient');
 const { respondStripeError } = require('../utils/stripeHttpError');
+const { assertPlatformCharge } = require('../utils/platformCharge');
 
 function returnBaseUrl() {
   const base = (FRONTEND_ORIGIN || (IS_DEV ? 'http://localhost:5173' : '')).trim().replace(/\/$/, '');
@@ -55,7 +56,7 @@ exports.createCheckoutSession = async (req, res) => {
   }
 
   try {
-    const session = await stripe.checkout.sessions.create(payload);
+    const session = await stripe.checkout.sessions.create(assertPlatformCharge(payload));
     return res.json({ clientSecret: session.client_secret });
   } catch (err) {
     return respondStripeError(res, err, 'createCheckoutSession');

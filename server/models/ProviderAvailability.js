@@ -4,7 +4,7 @@ const BaseModel = require('./BaseModel');
 const TABLE = 'provider_availability';
 const COLUMNS = [
   'id', 'provider_id', 'slot_date', 'day_of_week', 'start_time', 'end_time',
-  'is_available', 'booking_type',
+  'is_available', 'booking_type', 'program_note',
 ];
 
 class ProviderAvailability extends BaseModel {
@@ -18,6 +18,7 @@ class ProviderAvailability extends BaseModel {
     this.end_time = body?.end_time;
     this.is_available = body?.is_available;
     this.booking_type = body?.booking_type;
+    this.program_note = body?.program_note;
   }
 }
 

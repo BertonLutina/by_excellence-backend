@@ -7,17 +7,7 @@ const { sendStripe } = require('../utils/stripeHttpError');
 
 const B = (req) => req.body || {};
 
-// --- payouts ---
-exports.payoutsCreate = (req, res) => sendStripe(res, () => req.stripe.payouts.create(B(req)));
-exports.payoutsUpdate = (req, res) =>
-  sendStripe(res, () => req.stripe.payouts.update(req.params.id, B(req)));
-exports.payoutsRetrieve = (req, res) =>
-  sendStripe(res, () => req.stripe.payouts.retrieve(req.params.id, req.query));
-exports.payoutsList = (req, res) => sendStripe(res, () => req.stripe.payouts.list(req.query));
-exports.payoutsCancel = (req, res) =>
-  sendStripe(res, () => req.stripe.payouts.cancel(req.params.id, B(req)));
-exports.payoutsReverse = (req, res) =>
-  sendStripe(res, () => req.stripe.payouts.reverse(req.params.id, B(req)));
+// Provider settlement is an in-app bank transfer recorded on provider_payouts.
 
 // --- payment_methods ---
 exports.paymentMethodsCreate = (req, res) =>
