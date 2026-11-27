@@ -37,6 +37,10 @@ const signToken = (user) =>
     { expiresIn: JWT_EXPIRES_IN }
   );
 
+// Rôles qu'on peut choisir à l'inscription publique. Jamais `admin` : ce rôle
+// ne se donne que depuis l'espace administrateur.
+const PUBLIC_SIGNUP_ROLES = ['client', 'provider'];
+
 exports.register = async (req, res) => {
   try {
     const { email, password, full_name, role } = req.body;
@@ -44,7 +48,8 @@ exports.register = async (req, res) => {
     const existing = await User.findByEmail(email);
     if (existing) return res.status(409).json({ error: 'Email already registered' });
     const password_hash = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, password_hash, full_name, role });
+    const safeRole = PUBLIC_SIGNUP_ROLES.includes(role) ? role : 'client';
+    const user = await User.create({ email, password_hash, full_name, role: safeRole });
 
     // Send verification email (non-blocking)
     sendMail({
